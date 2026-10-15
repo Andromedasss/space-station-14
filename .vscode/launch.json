@@ -27,7 +27,8 @@
             "type": "coreclr",
             "request": "launch",
             "program": "${workspaceFolder}/bin/Content.Server/Content.Server.dll",
-            "args": [],
+            "args": ["--config-file", "${workspaceFolder}/server_config.local.toml"],
+            "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "stopAtEntry": false
         },
