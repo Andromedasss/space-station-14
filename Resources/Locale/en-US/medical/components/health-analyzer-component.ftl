@@ -32,3 +32,4 @@ health-analyzer-physiology-brain = Brain: oxygen debt {$debt}s / injury {$damage
 health-analyzer-physiology-brain-missing = Brain absent. Transplant required.
 health-analyzer-physiology-brain-dead = Irreversible brain death. Restoring circulation cannot revive.
 health-analyzer-physiology-injury = {$part}: injury {$damage} / bleeding {$bleeding} per tick
+health-analyzer-physiology-organ-injury = {$organ}: internal trauma {$trauma}/100

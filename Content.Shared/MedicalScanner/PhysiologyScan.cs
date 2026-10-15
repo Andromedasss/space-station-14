@@ -16,7 +16,11 @@ public sealed class PhysiologyScan
     public bool BrainMissing;
     public float Mobility;
     public List<LocalizedInjuryScan> Injuries = new();
+    public List<InternalOrganInjuryScan> OrganInjuries = new();
 }
 
 [Serializable, NetSerializable]
 public sealed record LocalizedInjuryScan(string Category, float Damage, float Bleeding);
+
+[Serializable, NetSerializable]
+public sealed record InternalOrganInjuryScan(string Category, float Trauma);

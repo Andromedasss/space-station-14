@@ -32,6 +32,7 @@ public sealed class PhysiologySystem : EntitySystem
         UpdatesAfter.Add(typeof(BloodstreamSystem));
         SubscribeLocalEvent<PhysiologyComponent, RejuvenateEvent>(OnRejuvenate);
         SubscribeLocalEvent<CerebralHealthComponent, RejuvenateEvent>(OnBrainRejuvenate);
+        SubscribeLocalEvent<MedicalOrganComponent, RejuvenateEvent>(OnOrganRejuvenate);
         SubscribeLocalEvent<PhysiologyComponent, MobStateChangeAttemptEvent>(OnStateChangeAttempt);
     }
 
@@ -90,7 +91,7 @@ public sealed class PhysiologySystem : EntitySystem
         state.LungFunction = 0f;
         foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>((uid, body)))
         {
-            var function = Math.Clamp(organ.Comp2.Function, 0f, 1f);
+            var function = organ.Comp2.EffectiveFunction;
             switch (organ.Comp2.Kind)
             {
                 case MedicalOrganKind.Heart:
@@ -144,6 +145,11 @@ public sealed class PhysiologySystem : EntitySystem
                 result.Injuries.Add(new LocalizedInjuryScan(part.Comp1.Category?.Id ?? "Unknown",
                     part.Comp2.Injury.GetTotal().Float(), part.Comp2.Bleeding));
         }
+        foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>((uid, body)))
+        {
+            if (organ.Comp2.Trauma > 0f)
+                result.OrganInjuries.Add(new InternalOrganInjuryScan(organ.Comp1.Category?.Id ?? "Unknown", organ.Comp2.Trauma));
+        }
         return result;
     }
 
@@ -171,6 +177,8 @@ public sealed class PhysiologySystem : EntitySystem
         if (!hasBrain)
             text.AppendLine("No supported brain: body cannot be revived without transplantation.");
         text.AppendLine("Localized injuries (unlocated attacks use Torso):");
+        foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>((uid, body)))
+            text.AppendLine($"{organ.Comp2.Kind} {GetNetEntity(organ.Owner)}: trauma={organ.Comp2.Trauma:F2}/100; effective function={organ.Comp2.EffectiveFunction:F3}");
         foreach (var part in _body.EnumerateOrgans<MedicalWoundComponent>((uid, body)))
         {
             if (part.Comp2.Injury.GetTotal() > 0 || part.Comp2.Bleeding > 0f)
@@ -242,6 +250,12 @@ public sealed class PhysiologySystem : EntitySystem
         ent.Comp.OxygenDebt = 0f;
     }
 
+    private void OnOrganRejuvenate(Entity<MedicalOrganComponent> ent, ref RejuvenateEvent args)
+    {
+        ent.Comp.Function = 1f;
+        ent.Comp.Trauma = 0f;
+    }
+
     private void OnStateChangeAttempt(Entity<PhysiologyComponent> ent, ref MobStateChangeAttemptEvent args)
     {
         var expected = MobState.Dead;
@@ -266,7 +280,10 @@ public sealed class PhysiologySystem : EntitySystem
             organ.Comp2.OxygenDebt = 0f;
         }
         foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>(ent.Owner))
+        {
             organ.Comp2.Function = 1f;
+            organ.Comp2.Trauma = 0f;
+        }
         if (TryComp<PhysiologyStateComponent>(ent, out var state))
             Record(state, "Administrative rejuvenation");
     }

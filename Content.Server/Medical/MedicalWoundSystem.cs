@@ -59,6 +59,21 @@ public sealed class MedicalWoundSystem : EntitySystem
                         Math.Max(0f, amount.Float() * coefficient));
                 if (TryComp<PhysiologyStateComponent>(ent, out var state))
                     _physiology.Record(state, $"WOUND {hit.Comp1.Category}: {type} +{amount}; source={args.Origin}");
+                foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>(ent.Owner))
+                {
+                    var medical = organ.Comp2;
+                    if (medical.ProtectedBy != hit.Comp1.Category?.Id
+                        || !medical.TraumaPerDamage.TryGetValue(type, out var transfer)
+                        || !float.IsFinite(transfer) || transfer <= 0f
+                        || !float.IsFinite(medical.TraumaThreshold) || medical.TraumaThreshold < 0f)
+                        continue;
+
+                    var trauma = Math.Max(0f, amount.Float() - medical.TraumaThreshold) * transfer;
+                    var previous = medical.Trauma;
+                    medical.Trauma = Math.Clamp(previous + trauma, 0f, 100f);
+                    if (medical.Trauma != previous && TryComp<PhysiologyStateComponent>(ent, out var history))
+                        _physiology.Record(history, $"ORGAN {medical.Kind}: trauma {previous:F2} -> {medical.Trauma:F2}");
+                }
             }
             else if (amount < 0)
             {

@@ -16,6 +16,36 @@ namespace Content.IntegrationTests.Tests.Body;
 public sealed class MedicalTreatmentInteractionTest : InteractionTest
 {
     [Test]
+    public async Task GauzeRepairsExternalWoundButScannerStillReportsInternalTrauma()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        await Server.WaitPost(() => Assert.That(SEntMan.System<MedicalWoundSystem>()
+            .TryInjure(STarget!.Value, "Torso", "Piercing", 60f), Is.True));
+        await InteractUsing("Gauze", 10);
+        await Server.WaitAssertion(() =>
+        {
+            var patient = STarget!.Value;
+            var torso = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(patient)
+                .Single(p => p.Comp1.Category?.Id == "Torso");
+            Assert.That(torso.Comp2.Injury.GetTotal().Float(), Is.Zero);
+            Assert.That(SEntMan.GetComponent<BloodstreamComponent>(patient).BleedAmount, Is.Zero);
+            var scan = SEntMan.System<PhysiologySystem>().Scan(patient)!;
+            Assert.That(scan.OrganInjuries.Count, Is.EqualTo(2));
+            Assert.That(scan.OrganInjuries.All(p => p.Trauma == 40f), Is.True);
+        });
+        await InteractUsing("HandheldHealthAnalyzer");
+        await RunTicks(40);
+        await Client.WaitAssertion(() =>
+        {
+            var window = GetWindow<HealthAnalyzerWindow>();
+            foreach (var category in new[] { "Heart", "Lungs" })
+                Assert.That(GetControlFromChildren<Label>(label => label.Text != null
+                    && label.Text.Contains(category + ": internal trauma"), window).Text, Does.Contain("40.00/100"));
+        });
+    }
+
+    [Test]
     public async Task AnalyzerInteractionDisplaysLocalizedPhysiologyOnClient()
     {
         await AddAtmosphere();

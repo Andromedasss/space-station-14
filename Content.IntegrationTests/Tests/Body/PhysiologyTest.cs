@@ -6,6 +6,7 @@ using Content.Server.Body.Systems;
 using Content.Server.Medical;
 using Content.Shared.Administration.Systems;
 using Content.Shared.Body;
+using Content.Shared.Body.Systems;
 using Content.Shared.Damage;
 using Content.Shared.Damage.Components;
 using Content.Shared.Damage.Systems;
@@ -21,6 +22,86 @@ namespace Content.IntegrationTests.Tests.Body;
 [TestOf(typeof(PhysiologySystem))]
 public sealed class PhysiologyTest : GameTest
 {
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void TorsoTraumaReducesOrganFunctionWithoutBeingHealedByDressingsOrBlood()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var wounds = SEntMan.System<MedicalWoundSystem>();
+        var physiology = SEntMan.System<PhysiologySystem>();
+        var organs = body.EnumerateOrgans<MedicalOrganComponent>(patient).ToArray();
+        wounds.TryInjure(patient, "ArmLeft", "Piercing", 100f);
+        wounds.TryInjure(patient, "Torso", "Piercing", 20f);
+        Assert.That(organs.All(p => p.Comp2.Trauma == 0f), Is.True);
+
+        wounds.TryInjure(patient, "Torso", "Piercing", 60f);
+        Assert.That(organs.All(p => p.Comp2.Trauma == 40f), Is.True);
+        var scan = physiology.Scan(patient)!;
+        Assert.That(scan.HeartFunction, Is.EqualTo(0.6f).Within(0.001f));
+        Assert.That(scan.LungFunction, Is.EqualTo(0.6f).Within(0.001f));
+        Assert.That(scan.OrganInjuries.Count, Is.EqualTo(2));
+        Assert.That(scan.OrganInjuries.All(p => p.Trauma == 40f), Is.True);
+        Assert.That(physiology.Inspect(patient), Does.Contain("trauma=40.00/100"));
+
+        SEntMan.System<DamageableSystem>().TryChangeDamage(patient,
+            new DamageSpecifier { DamageDict = { ["Piercing"] = FixedPoint2.New(-1000) } }, true);
+        SEntMan.System<BloodstreamSystem>().TryModifyBleedAmount(patient, -10f);
+        physiology.TryIntervene(patient, "blood", 1f);
+        physiology.Update(60f);
+        Assert.That(organs.All(p => p.Comp2.Trauma == 40f), Is.True);
+        Assert.That(SEntMan.System<MobStateSystem>().IsCritical(patient), Is.True);
+        Assert.That(physiology.Scan(patient)!.OxygenDelivery, Is.EqualTo(0.36f).Within(0.001f));
+
+        SEntMan.System<RejuvenateSystem>().PerformRejuvenate(patient);
+        physiology.Update(0f);
+        Assert.That(organs.All(p => p.Comp2.Trauma == 0f && p.Comp2.EffectiveFunction == 1f), Is.True);
+        Assert.That(SEntMan.System<MobStateSystem>().IsAlive(patient), Is.True);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void InternalTraumaFollowsPhysicalTransplantsAndOrganRejuvenation()
+    {
+        var donor = SSpawn("MobMedicalTestHuman");
+        var patient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var physiology = SEntMan.System<PhysiologySystem>();
+        var heart = body.EnumerateOrgans<MedicalOrganComponent>(donor).Single(p => p.Comp2.Kind == MedicalOrganKind.Heart);
+        var oldHeart = body.EnumerateOrgans<MedicalOrganComponent>(patient).Single(p => p.Comp2.Kind == MedicalOrganKind.Heart);
+        SEntMan.System<MedicalWoundSystem>().TryInjure(donor, "Torso", "Blunt", 100f);
+        Assert.That(heart.Comp2.Trauma, Is.EqualTo(40f));
+        var containers = SEntMan.System<SharedContainerSystem>();
+        containers.Remove(heart.Owner, containers.GetContainer(donor, BodyComponent.ContainerID));
+        containers.Remove(oldHeart.Owner, containers.GetContainer(patient, BodyComponent.ContainerID));
+        containers.Insert(heart.Owner, containers.GetContainer(patient, BodyComponent.ContainerID));
+        Assert.That(physiology.Scan(patient)!.HeartFunction, Is.EqualTo(0.6f).Within(0.001f));
+        Assert.That(heart.Comp2.Trauma, Is.EqualTo(40f));
+        physiology.TryIntervene(patient, "heart", 1f);
+        Assert.That(physiology.Scan(patient)!.HeartFunction, Is.EqualTo(0.6f).Within(0.001f),
+            "Changing functional capacity must not erase structural trauma.");
+        SEntMan.System<RejuvenateSystem>().PerformRejuvenate(heart.Owner);
+        Assert.That(physiology.Scan(patient)!.HeartFunction, Is.EqualTo(1f));
+        Assert.That(physiology.Scan(patient)!.OrganInjuries, Is.Empty);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void DestructiveTorsoInjuryCapsInternalTraumaAndCausesPerfusionFailure()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        SEntMan.System<MedicalWoundSystem>().TryInjure(patient, "Torso", "Piercing", 1000f);
+        var physiology = SEntMan.System<PhysiologySystem>();
+        var scan = physiology.Scan(patient)!;
+        Assert.That(scan.OrganInjuries.All(p => p.Trauma == 100f), Is.True);
+        Assert.That(scan.HeartFunction, Is.Zero);
+        Assert.That(scan.LungFunction, Is.Zero);
+        physiology.Update(16f);
+        Assert.That(SEntMan.System<MobStateSystem>().IsCritical(patient), Is.True);
+        physiology.Update(140f);
+        Assert.That(SEntMan.System<MobStateSystem>().IsDead(patient), Is.True);
+    }
+
     [Test]
     [RunOnSide(Side.Server)]
     public void HeartFailureRecoveryAndIrreversibleDeath()
