@@ -17,6 +17,11 @@ public sealed partial class InitialBodySystem : EntitySystem
         SubscribeLocalEvent<InitialBodyComponent, MapInitEvent>(OnMapInit);
     }
 
+    public bool SupportsCategory(Entity<InitialBodyComponent?> body, ProtoId<OrganCategoryPrototype> category)
+    {
+        return Resolve(body, ref body.Comp, false) && body.Comp.Organs.ContainsKey(category);
+    }
+
     private void OnMapInit(Entity<InitialBodyComponent> ent, ref MapInitEvent args)
     {
         if (!TryComp<ContainerManagerComponent>(ent, out var containerComp))

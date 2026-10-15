@@ -269,6 +269,8 @@ public sealed class MedicalWoundTest : GameTest
         var leg = body.EnumerateOrgans<MedicalWoundComponent>(donor).Single(p => p.Comp1.Category?.Id == "LegLeft");
         var containers = SEntMan.System<SharedContainerSystem>();
         containers.Remove(leg.Owner, containers.GetContainer(donor, BodyComponent.ContainerID));
+        var oldLeg = body.EnumerateOrgans<MedicalWoundComponent>(recipient).Single(p => p.Comp1.Category?.Id == "LegLeft");
+        containers.Remove(oldLeg.Owner, containers.GetContainer(recipient, BodyComponent.ContainerID));
         containers.Insert(leg.Owner, containers.GetContainer(recipient, BodyComponent.ContainerID));
         var blood = SComp<BloodstreamComponent>(recipient);
         Assert.That(body.EnumerateOrgans<MedicalWoundComponent>(recipient).Sum(p => p.Comp2.Bleeding),
@@ -324,5 +326,64 @@ public sealed class MedicalWoundTest : GameTest
         var parts = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(patient).ToArray();
         SEntMan.RemoveComponent<BodyComponent>(patient);
         Assert.That(parts.All(p => p.Comp2.Injury.Empty && p.Comp2.Bleeding == 0f), Is.True);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void AmputationCarriesDescendantsAndTransplantReparentsWithoutDuplicateSlots()
+    {
+        var donor = SSpawn("MobMedicalTestHuman");
+        var recipient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var containers = SEntMan.System<SharedContainerSystem>();
+        var donorContainer = containers.GetContainer(donor, BodyComponent.ContainerID);
+        var recipientContainer = containers.GetContainer(recipient, BodyComponent.ContainerID);
+        var leg = body.EnumerateOrgans<MedicalWoundComponent>(donor).Single(p => p.Comp1.Category?.Id == "LegLeft");
+        var foot = body.EnumerateOrgans<MedicalWoundComponent>(donor).Single(p => p.Comp1.Category?.Id == "FootLeft");
+        var oldLeg = body.EnumerateOrgans<MedicalWoundComponent>(recipient).Single(p => p.Comp1.Category?.Id == "LegLeft");
+        var torso = body.EnumerateOrgans<MedicalWoundComponent>(recipient).Single(p => p.Comp1.Category?.Id == "Torso");
+        SEntMan.System<MedicalWoundSystem>().TryInjure(donor, "FootLeft", "Piercing", 10f);
+
+        Assert.That(containers.Remove(leg.Owner, donorContainer), Is.True);
+        Assert.That(foot.Comp1.Body, Is.Null);
+        Assert.That(SComp<ChildOrganComponent>(leg.Owner).Parent, Is.Null);
+        Assert.That(SComp<ChildOrganComponent>(foot.Owner).Parent, Is.EqualTo(leg.Owner));
+        Assert.That(body.EnumerateOrgans<MedicalWoundComponent>(donor).Any(p => p.Owner == foot.Owner), Is.False);
+        Assert.That(foot.Comp2.Injury.GetTotal(), Is.EqualTo(FixedPoint2.New(10)));
+        Assert.That(containers.Insert(leg.Owner, recipientContainer), Is.False, "Occupied leg and foot cannot be duplicated.");
+        Assert.That(foot.Comp1.Body, Is.Null, "A rejected transplant must not partly attach its descendants.");
+
+        Assert.That(containers.Remove(oldLeg.Owner, recipientContainer), Is.True);
+        Assert.That(containers.Insert(leg.Owner, recipientContainer), Is.True);
+        Assert.That(foot.Comp1.Body, Is.EqualTo(recipient));
+        Assert.That(SComp<ChildOrganComponent>(leg.Owner).Parent, Is.EqualTo(torso.Owner));
+        Assert.That(SComp<ChildOrganComponent>(foot.Owner).Parent, Is.EqualTo(leg.Owner));
+        Assert.That(body.EnumerateOrgans<MedicalWoundComponent>(recipient).Count(), Is.EqualTo(10));
+        Assert.That(foot.Comp2.Injury.GetTotal(), Is.EqualTo(FixedPoint2.New(10)));
+        Assert.That(SEntMan.System<DamageableSystem>().GetAllDamage(recipient).DamageDict["Piercing"], Is.EqualTo(FixedPoint2.New(10)));
+
+        Assert.That(containers.Remove(foot.Owner, recipientContainer), Is.True);
+        Assert.That(leg.Comp2.Injury.DamageDict["Slash"], Is.EqualTo(FixedPoint2.New(20)), "New amputations wound the recipient's anatomy.");
+        Assert.That(containers.Insert(foot.Owner, donorContainer), Is.False, "A foot needs an attached leg.");
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void HeadRemovalCarriesBrainAndDuplicateBrainIsRejected()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var containers = SEntMan.System<SharedContainerSystem>();
+        var container = containers.GetContainer(patient, BodyComponent.ContainerID);
+        var head = body.EnumerateOrgans<MedicalWoundComponent>(patient).Single(p => p.Comp1.Category?.Id == "Head");
+        var brain = body.EnumerateOrgans<CerebralHealthComponent>(patient).Single();
+        var extraBrain = SSpawn("OrganMedicalTestBrain");
+        Assert.That(containers.Insert(extraBrain, container), Is.False);
+        Assert.That(containers.Remove(head.Owner, container), Is.True);
+        Assert.That(brain.Comp1.Body, Is.Null);
+        Assert.That(body.EnumerateOrgans<CerebralHealthComponent>(patient), Is.Empty);
+        Assert.That(containers.Insert(extraBrain, container), Is.False, "A brain needs an attached head.");
+        Assert.That(containers.Insert(head.Owner, container), Is.True);
+        Assert.That(body.EnumerateOrgans<CerebralHealthComponent>(patient).Single().Owner, Is.EqualTo(brain.Owner));
     }
 }

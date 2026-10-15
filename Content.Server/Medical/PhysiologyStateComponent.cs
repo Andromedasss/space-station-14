@@ -6,6 +6,8 @@ namespace Content.Server.Medical;
 [RegisterComponent]
 public sealed partial class PhysiologyStateComponent : Component
 {
+    public bool AnatomyInitialized;
+
     [ViewVariables]
     public float BloodFraction;
 
