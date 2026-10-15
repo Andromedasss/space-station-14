@@ -2,6 +2,9 @@ using System.Linq;
 using Content.Client.HealthAnalyzer.UI;
 using Content.IntegrationTests.Tests.Interaction;
 using Content.Server.Medical;
+using Content.Server.Power.Components;
+using Content.Server.Body.Systems;
+using Content.Server.Body.Components;
 using Content.Shared.Body;
 using Content.Shared.Body.Components;
 using Content.Shared.Body.Systems;
@@ -19,6 +22,112 @@ namespace Content.IntegrationTests.Tests.Body;
 
 public sealed class MedicalTreatmentInteractionTest : InteractionTest
 {
+    [Test]
+    public async Task LifeSupportVentilatesFromReservoirButEmptySupplyCannotPreventHypoxia()
+    {
+        // No ambient atmosphere: respiratory reserve must come from the finite machine reservoir.
+        await SpawnTarget("MobMedicalTestHuman");
+        var bed = await Spawn("MedicalTestIntensiveCareBed");
+        await Server.WaitPost(() =>
+        {
+            var uid = SEntMan.GetEntity(bed);
+            var power = SEntMan.GetComponent<ApcPowerReceiverComponent>(uid);
+            power.NeedsPower = false;
+            power.Powered = true;
+            Assert.That(SEntMan.System<SharedBuckleSystem>().TryBuckle(STarget!.Value, null, uid), Is.True);
+        });
+        await RunSeconds(20f);
+        await Server.WaitAssertion(() =>
+        {
+            var scan = SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!;
+            Assert.That(scan.OxygenDelivery, Is.GreaterThanOrEqualTo(0.5f));
+            Assert.That(SEntMan.System<MobStateSystem>().IsAlive(STarget.Value), Is.True);
+            SEntMan.GetComponent<MedicalLifeSupportComponent>(SEntMan.GetEntity(bed)).GasSupply.Clear();
+        });
+        await RunSeconds(20f);
+        await Server.WaitAssertion(() =>
+        {
+            var scan = SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!;
+            Assert.That(scan.OxygenDelivery, Is.Zero);
+            Assert.That(scan.OxygenDebt, Is.GreaterThan(0f));
+        });
+    }
+
+    [Test]
+    public async Task PoweredLifeSupportAssistsExistingHeartAndConsumesFiniteBreathingGas()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        var bed = await Spawn("MedicalTestIntensiveCareBed");
+        await Server.WaitAssertion(() =>
+        {
+            var uid = SEntMan.GetEntity(bed);
+            SEntMan.GetComponent<ApcPowerReceiverComponent>(uid).Powered = true;
+            Assert.That(SEntMan.System<SharedBuckleSystem>().TryBuckle(STarget!.Value, null, uid), Is.True);
+            var physiology = SEntMan.System<PhysiologySystem>();
+            physiology.TryIntervene(STarget.Value, "heart", 0f);
+            physiology.Update(16f);
+            var scan = physiology.Scan(STarget.Value)!;
+            Assert.That(scan.LifeSupport, Is.True);
+            Assert.That(scan.HeartFunction, Is.Zero, "Assistance does not repair the native heart.");
+            Assert.That(scan.CirculatoryFunction, Is.EqualTo(0.8f).Within(0.001f));
+            Assert.That(SEntMan.System<MobStateSystem>().IsAlive(STarget.Value), Is.True);
+            var support = SEntMan.GetComponent<MedicalLifeSupportComponent>(uid);
+            var before = support.GasSupply.TotalMoles;
+            SEntMan.System<RespiratorSystem>().Inhale(STarget.Value);
+            Assert.That(support.GasSupply.TotalMoles, Is.LessThan(before));
+            SEntMan.GetComponent<ApcPowerReceiverComponent>(uid).Powered = false;
+            physiology.Update(16f);
+            Assert.That(physiology.Scan(STarget.Value)!.CirculatoryFunction, Is.Zero);
+            Assert.That(SEntMan.System<MobStateSystem>().IsCritical(STarget.Value), Is.True);
+            SEntMan.GetComponent<ApcPowerReceiverComponent>(uid).Powered = true;
+            physiology.Update(9f);
+            Assert.That(SEntMan.System<MobStateSystem>().IsAlive(STarget.Value), Is.True);
+            SEntMan.System<SharedBuckleSystem>().Unbuckle(STarget.Value, null);
+            Assert.That(physiology.Scan(STarget.Value)!.LifeSupport, Is.False);
+            Assert.That(physiology.Scan(STarget.Value)!.CirculatoryFunction, Is.Zero);
+        });
+    }
+
+    [Test]
+    public async Task LifeSupportCannotReplaceBloodDestroyedOrgansOrAnIrreversibleBrain()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        var bed = await Spawn("MedicalTestIntensiveCareBed");
+        await Server.WaitAssertion(() =>
+        {
+            var uid = SEntMan.GetEntity(bed);
+            SEntMan.GetComponent<ApcPowerReceiverComponent>(uid).Powered = true;
+            SEntMan.System<SharedBuckleSystem>().TryBuckle(STarget!.Value, null, uid);
+            var physiology = SEntMan.System<PhysiologySystem>();
+            physiology.TryIntervene(STarget.Value, "heart", 0f);
+            physiology.TryIntervene(STarget.Value, "blood", 0f);
+            Assert.That(physiology.Scan(STarget.Value)!.OxygenDelivery, Is.Zero);
+            physiology.TryIntervene(STarget.Value, "blood", 1f);
+            var heart = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget.Value)
+                .Single(p => p.Comp2.Kind == MedicalOrganKind.Heart);
+            heart.Comp2.Trauma = 100f;
+            Assert.That(physiology.Scan(STarget.Value)!.CirculatoryFunction, Is.Zero);
+            heart.Comp2.Trauma = 0f;
+            physiology.TryIntervene(STarget.Value, "lungs", 0f);
+            Assert.That(physiology.Scan(STarget.Value)!.OxygenDelivery, Is.Zero);
+            physiology.TryIntervene(STarget.Value, "lungs", 1f);
+            var brain = SEntMan.System<BodySystem>().EnumerateOrgans<CerebralHealthComponent>(STarget.Value).Single();
+            brain.Comp2.Damage = 100f;
+            physiology.Update(30f);
+            Assert.That(SEntMan.System<MobStateSystem>().IsDead(STarget.Value), Is.True);
+            Assert.That(brain.Comp2.Damage, Is.EqualTo(100f));
+            var containers = SEntMan.System<SharedContainerSystem>();
+            containers.Remove(heart.Owner, containers.GetContainer(STarget.Value, BodyComponent.ContainerID));
+            Assert.That(physiology.Scan(STarget.Value)!.CirculatoryFunction, Is.Zero);
+            containers.Remove(brain.Owner, containers.GetContainer(STarget.Value, BodyComponent.ContainerID));
+            physiology.Update(0f);
+            Assert.That(physiology.Scan(STarget.Value)!.BrainMissing, Is.True);
+            Assert.That(SEntMan.System<MobStateSystem>().IsDead(STarget.Value), Is.True);
+        });
+    }
+
     private async Task SelectZone(string category)
     {
         await Client.WaitPost(() => CEntMan.System<Content.Client.Verbs.VerbSystem>()

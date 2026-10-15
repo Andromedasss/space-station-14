@@ -1,3 +1,5 @@
+using Content.Shared.DoAfter;
+
 namespace Content.Server.Medical;
 
 /// <summary>
@@ -13,6 +15,18 @@ public sealed partial class PhysiologyStateComponent : Component
 
     [ViewVariables]
     public float HeartFunction;
+
+    [ViewVariables]
+    public float CirculatoryFunction;
+
+    [ViewVariables]
+    public bool LifeSupport;
+
+    public DoAfterId? Compressions;
+
+    public bool CprActive;
+
+    public float InotropeDose;
 
     [ViewVariables]
     public float LungFunction;

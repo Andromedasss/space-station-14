@@ -3,6 +3,13 @@ using Content.Shared.Inventory;
 namespace Content.Shared.Medical;
 
 [ByRefEvent]
+public struct MedicalDefibrillationEvent
+{
+    public bool Handled;
+    public bool Successful;
+}
+
+[ByRefEvent]
 public readonly record struct TargetDefibrillatedEvent(
     EntityUid User,
     EntityUid Target,

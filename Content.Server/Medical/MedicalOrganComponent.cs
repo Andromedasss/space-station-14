@@ -26,6 +26,9 @@ public sealed partial class MedicalOrganComponent : Component
     public float Trauma;
 
     [DataField]
+    public bool Fibrillating;
+
+    [DataField]
     public string ProtectedBy = "Torso";
 
     /// <summary>
@@ -42,5 +45,6 @@ public sealed partial class MedicalOrganComponent : Component
         ["Piercing"] = 1f,
     };
 
-    public float EffectiveFunction => Math.Clamp(Function, 0f, 1f) * (1f - Math.Clamp(Trauma / 100f, 0f, 1f));
+    public float EffectiveFunction => Fibrillating ? 0f
+        : Math.Clamp(Function, 0f, 1f) * (1f - Math.Clamp(Trauma / 100f, 0f, 1f));
 }

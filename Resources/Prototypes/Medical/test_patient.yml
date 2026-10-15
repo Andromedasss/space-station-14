@@ -1,4 +1,30 @@
 # Explicit opt-in: ordinary crew continue using upstream medicine.
+- type: reagent
+  id: MedicalTestInotrope
+  name: reagent-name-medical-test-inotrope
+  desc: reagent-desc-medical-test-inotrope
+  physicalDesc: reagent-physical-desc-translucent
+  group: Medicine
+  flavor: medicine
+  color: "#d98645"
+  metabolisms:
+    Bloodstream:
+      metabolismRate: 0.2
+      effects: []
+
+- type: entity
+  parent: ChemicalMedipen
+  id: MedicalTestInotropeMedipen
+  name: experimental inotrope injector
+  suffix: Experimental Physiology
+  description: Delivers 5 units of experimental inotrope through the normal injection system. Temporarily supports a weak existing heart. A bloodstream dose of 10 or more causes fibrillation. Cannot replace blood or repair tissue.
+  components:
+  - type: Solution
+    solution:
+      reagents:
+      - ReagentId: MedicalTestInotrope
+        Quantity: 5
+
 - type: entity
   parent: OperatingTable
   id: MedicalTestOperatingTable
@@ -7,6 +33,25 @@
   description: Buckle the patient here for experimental surgery. Use the tool's surgery actions in the patient's context menu.
   components:
   - type: MedicalOperatingTable
+
+- type: entity
+  parent: MedicalTestOperatingTable
+  id: MedicalTestIntensiveCareBed
+  name: experimental intensive care bed
+  description: Buckle an experimental patient here for powered circulatory assistance and ventilation from a finite air reservoir. Does not replace blood, missing organs or destroyed tissue. Power loss or unbuckling stops assistance.
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalLifeSupport
+    gasSupply:
+      volume: 100
+      moles:
+        Oxygen: 20
+        Nitrogen: 80
+      temperature: 293.15
+  - type: ApcPowerReceiver
+    powerLoad: 2000
+  - type: ExtensionCableReceiver
+  - type: PowerSwitch
 
 - type: entity
   parent: BaseHealingItem
@@ -26,7 +71,7 @@
 
 - type: stack
   id: MedicalTestOrganRepair
-  name: experimental organ repair supplies
+  name: medical-organ-repair-stack
   icon: { sprite: Objects/Specific/Medical/medical.rsi, state: gauze }
   spawn: MedicalTestOrganRepairKit
   maxCount: 10

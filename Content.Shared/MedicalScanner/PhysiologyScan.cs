@@ -9,6 +9,11 @@ namespace Content.Shared.MedicalScanner;
 public sealed class PhysiologyScan
 {
     public float HeartFunction;
+    public float CirculatoryFunction;
+    public bool LifeSupport;
+    public bool CprActive;
+    public bool ShockableRhythm;
+    public float InotropeDose;
     public float LungFunction;
     public float OxygenDelivery;
     public float OxygenDebt;

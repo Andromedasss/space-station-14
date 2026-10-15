@@ -133,6 +133,16 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
                     ("part", site.Category), ("stage", site.Stage))));
             foreach (var part in physiology.Fractures)
                 PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-fracture", ("part", part))));
+            if (physiology.LifeSupport)
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-life-support",
+                    ("circulation", (physiology.CirculatoryFunction * 100f).ToString("F1")))));
+            if (physiology.CprActive)
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-cpr-active")));
+            if (physiology.ShockableRhythm)
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-shockable-rhythm")));
+            if (physiology.InotropeDose > 0f)
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-inotrope-dose",
+                    ("dose", physiology.InotropeDose.ToString("F1")))));
             foreach (var part in physiology.NecroticParts)
                 PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-necrosis", ("part", part))));
             foreach (var part in physiology.ProstheticParts)

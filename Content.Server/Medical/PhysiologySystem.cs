@@ -10,6 +10,7 @@ using Content.Shared.Mobs;
 using Content.Shared.Mobs.Components;
 using Content.Shared.Mobs.Systems;
 using Content.Shared.Rejuvenate;
+using Content.Shared.Chemistry.EntitySystems;
 using Robust.Shared.Timing;
 
 namespace Content.Server.Medical;
@@ -24,6 +25,9 @@ public sealed class PhysiologySystem : EntitySystem
     [Dependency] private BloodstreamSystem _blood = default!;
     [Dependency] private MobStateSystem _mobState = default!;
     [Dependency] private IGameTiming _timing = default!;
+    [Dependency] private MedicalLifeSupportSystem _lifeSupport = default!;
+    [Dependency] private MedicalResuscitationSystem _resuscitation = default!;
+    [Dependency] private SharedSolutionContainerSystem _solutions = default!;
 
     public override void Initialize()
     {
@@ -59,6 +63,18 @@ public sealed class PhysiologySystem : EntitySystem
 
     private void Simulate(EntityUid uid, BodyComponent body, PhysiologyStateComponent state, float seconds)
     {
+        // Persistent shockable rhythm is an overdose consequence, not a scanner side effect.
+        if (InotropeDose(uid) >= 10f)
+        {
+            foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>((uid, body)))
+            {
+                if (organ.Comp2.Kind == MedicalOrganKind.Heart && !organ.Comp2.Fibrillating)
+                {
+                    organ.Comp2.Fibrillating = true;
+                    Record(state, "INOTROPE overdose: ventricular fibrillation");
+                }
+            }
+        }
         Sample(uid, body, state);
         CerebralHealthComponent? brain = null;
         foreach (var organ in _body.EnumerateOrgans<CerebralHealthComponent>((uid, body)))
@@ -89,7 +105,12 @@ public sealed class PhysiologySystem : EntitySystem
     {
         state.BloodFraction = TryComp<BloodstreamComponent>(uid, out var blood) ? _blood.GetBloodLevel((uid, blood)) : 0f;
         state.HeartFunction = 0f;
+        state.CirculatoryFunction = 0f;
         state.LungFunction = 0f;
+        var support = _lifeSupport.GetSupport(uid);
+        state.LifeSupport = support != null;
+        state.CprActive = _resuscitation.IsCompressing(uid, state);
+        state.InotropeDose = InotropeDose(uid);
         foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>((uid, body)))
         {
             var function = organ.Comp2.EffectiveFunction;
@@ -97,6 +118,16 @@ public sealed class PhysiologySystem : EntitySystem
             {
                 case MedicalOrganKind.Heart:
                     state.HeartFunction = Math.Max(state.HeartFunction, function);
+                    // A pump assists the existing organ, not an absent or structurally destroyed one.
+                    var assistance = support != null && float.IsFinite(support.PumpFunction)
+                        ? Math.Clamp(support.PumpFunction, 0f, 1f) : 0f;
+                    if (state.CprActive)
+                        assistance = Math.Max(assistance, 0.6f);
+                    var structure = 1f - Math.Clamp(organ.Comp2.Trauma / 100f, 0f, 1f);
+                    var stimulated = !organ.Comp2.Fibrillating && organ.Comp2.Function > 0f
+                        && state.InotropeDose >= 2f && state.InotropeDose < 10f
+                        ? Math.Clamp(organ.Comp2.Function + 0.3f, 0f, 1f) * structure : function;
+                    state.CirculatoryFunction = Math.Max(state.CirculatoryFunction, Math.Max(stimulated, assistance * structure));
                     break;
                 case MedicalOrganKind.Lungs:
                     state.LungFunction = Math.Max(state.LungFunction, function);
@@ -107,11 +138,11 @@ public sealed class PhysiologySystem : EntitySystem
         // Upstream saturation is a reserve measured in seconds, NOT SpO2.
         state.RespiratorySupply = TryComp<RespiratorComponent>(uid, out var respirator)
             && respirator.Saturation > respirator.SuffocationThreshold ? 1f : 0f;
-        state.OxygenDelivery = PhysiologyModel.Delivery(state.BloodFraction, state.HeartFunction,
+        state.OxygenDelivery = PhysiologyModel.Delivery(state.BloodFraction, state.CirculatoryFunction,
             state.LungFunction, state.RespiratorySupply);
 
         state.LimitingFactor = state.OxygenDelivery >= PhysiologyModel.AdequateDelivery ? "Adequate delivery"
-            : state.HeartFunction == 0f ? "No functional heart"
+            : state.CirculatoryFunction == 0f ? "No functional heart"
             : state.LungFunction == 0f ? "No functional lungs"
             : state.RespiratorySupply == 0f ? "Respiratory reserve exhausted"
             : state.BloodFraction < PhysiologyModel.AdequateDelivery ? "Insufficient usable blood"
@@ -128,6 +159,10 @@ public sealed class PhysiologySystem : EntitySystem
         var result = new PhysiologyScan
         {
             HeartFunction = state.HeartFunction,
+            CirculatoryFunction = state.CirculatoryFunction,
+            LifeSupport = state.LifeSupport,
+            CprActive = state.CprActive,
+            InotropeDose = state.InotropeDose,
             LungFunction = state.LungFunction,
             OxygenDelivery = state.OxygenDelivery,
             Mobility = Comp<PhysiologyComponent>(uid).Mobility,
@@ -159,10 +194,18 @@ public sealed class PhysiologySystem : EntitySystem
         }
         foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>((uid, body)))
         {
+            result.ShockableRhythm |= organ.Comp2.Kind == MedicalOrganKind.Heart && organ.Comp2.Fibrillating;
             if (organ.Comp2.Trauma > 0f)
                 result.OrganInjuries.Add(new InternalOrganInjuryScan(organ.Comp1.Category?.Id ?? "Unknown", organ.Comp2.Trauma));
         }
         return result;
+    }
+
+    private float InotropeDose(EntityUid uid)
+    {
+        return TryComp<BloodstreamComponent>(uid, out var blood)
+            && _solutions.TryGetSolution(uid, blood.BloodSolutionName, out _, out var solution)
+            ? solution.GetTotalPrototypeQuantity("MedicalTestInotrope").Float() : 0f;
     }
 
     public string Inspect(EntityUid uid)
@@ -178,7 +221,8 @@ public sealed class PhysiologySystem : EntitySystem
             text.AppendLine($"Mob state: {mob.CurrentState}");
         text.AppendLine($"Blood fraction: {state.BloodFraction:F3}; heart: {state.HeartFunction:F3}; lungs: {state.LungFunction:F3}");
         text.AppendLine($"Locomotor support modifier: {Comp<PhysiologyComponent>(uid).Mobility:F3}");
-        text.AppendLine($"Respiratory supply: {state.RespiratorySupply:F3}; delivery = blood * heart * lungs * supply = {state.OxygenDelivery:F3}");
+        text.AppendLine($"Life support: {state.LifeSupport}; effective circulation: {state.CirculatoryFunction:F3}");
+        text.AppendLine($"Respiratory supply: {state.RespiratorySupply:F3}; delivery = blood * circulation * lungs * supply = {state.OxygenDelivery:F3}");
         text.AppendLine($"Limiting factor: {state.LimitingFactor}");
         var hasBrain = false;
         foreach (var organ in _body.EnumerateOrgans<CerebralHealthComponent>((uid, body)))
@@ -266,6 +310,7 @@ public sealed class PhysiologySystem : EntitySystem
     {
         ent.Comp.Function = 1f;
         ent.Comp.Trauma = 0f;
+        ent.Comp.Fibrillating = false;
     }
 
     private void OnStateChangeAttempt(Entity<PhysiologyComponent> ent, ref MobStateChangeAttemptEvent args)
@@ -295,6 +340,7 @@ public sealed class PhysiologySystem : EntitySystem
         {
             organ.Comp2.Function = 1f;
             organ.Comp2.Trauma = 0f;
+            organ.Comp2.Fibrillating = false;
         }
         if (TryComp<PhysiologyStateComponent>(ent, out var state))
             Record(state, "Administrative rejuvenation");

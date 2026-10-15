@@ -201,9 +201,14 @@ public abstract partial class SharedDefibrillatorSystem : EntitySystem
         {
             TryComp<MobStateComponent>(target, out var targetMobState);
 
-            _damageable.TryChangeDamage(target, ent.Comp.ZapHeal, true, origin: user);
+            var medical = new MedicalDefibrillationEvent { Handled = HasComp<PhysiologyComponent>(target) };
+            RaiseLocalEvent(target, ref medical);
+            if (medical.Handled)
+                failedRevive = !medical.Successful;
+            else
+                _damageable.TryChangeDamage(target, ent.Comp.ZapHeal, true, origin: user);
 
-            if (_mobState.IsDead(target, targetMobState) && // is the target currently dead
+            if (!medical.Handled && _mobState.IsDead(target, targetMobState) && // is the target currently dead
                 TryComp<MobThresholdsComponent>(target, out var targetThresholds) && //do they have a threshold
                 _mobThreshold.TryGetThresholdForState(target, MobState.Dead, out var threshold, targetThresholds) &&
                 _damageable.GetTotalDamage(target) < threshold) //is their current health above their death threshold
