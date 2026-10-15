@@ -68,7 +68,7 @@ public sealed class InternalTraumaTreatmentSystem : EntitySystem
         var worst = 0f;
         foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>(patient))
         {
-            if (!float.IsFinite(organ.Comp2.Trauma) || organ.Comp2.Trauma <= worst)
+            if (!float.IsFinite(organ.Comp2.Trauma) || organ.Comp2.Trauma <= worst || !HasAccess(organ.Owner))
                 continue;
             selected = organ.Owner;
             worst = organ.Comp2.Trauma;
@@ -93,8 +93,15 @@ public sealed class InternalTraumaTreatmentSystem : EntitySystem
         return tool is { } used && CanTreat(patient, user, used, out var table)
             && table == GetEntity(ev.Table) && TryComp<OrganComponent>(GetEntity(ev.Organ), out var organ)
             && !TerminatingOrDeleted(GetEntity(ev.Organ)) && organ.Body == patient
+            && HasAccess(GetEntity(ev.Organ))
             && TryComp<MedicalOrganComponent>(GetEntity(ev.Organ), out var medical)
             && float.IsFinite(medical.Trauma) && medical.Trauma > 0f;
+    }
+
+    private bool HasAccess(EntityUid organ)
+    {
+        return TryComp<ChildOrganComponent>(organ, out var child) && child.Parent is { } parent
+            && TryComp<MedicalWoundComponent>(parent, out var wound) && wound.SurgicalAccess == 3;
     }
 
     private void OnAttempt(Entity<PhysiologyComponent> ent, ref DoAfterAttemptEvent<InternalTraumaTreatmentDoAfterEvent> args)

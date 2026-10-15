@@ -141,6 +141,8 @@ public sealed class PhysiologySystem : EntitySystem
         }
         foreach (var part in _body.EnumerateOrgans<MedicalWoundComponent>((uid, body)))
         {
+            if (part.Comp2.SurgicalAccess > 0)
+                result.SurgicalSites.Add(new SurgicalAccessScan(part.Comp1.Category?.Id ?? "Unknown", part.Comp2.SurgicalAccess));
             if (part.Comp2.Injury.GetTotal() > 0 || part.Comp2.Bleeding > 0f)
                 result.Injuries.Add(new LocalizedInjuryScan(part.Comp1.Category?.Id ?? "Unknown",
                     part.Comp2.Injury.GetTotal().Float(), part.Comp2.Bleeding));

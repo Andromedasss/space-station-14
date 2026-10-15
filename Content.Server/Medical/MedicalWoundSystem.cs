@@ -234,6 +234,8 @@ public sealed class MedicalWoundSystem : EntitySystem
         {
             part.Comp2.Injury = new DamageSpecifier();
             part.Comp2.Bleeding = 0f;
+            part.Comp2.SurgicalAccess = 0;
+            part.Comp2.SurgeryRevision++;
         }
         Synchronize(ent);
     }
@@ -244,6 +246,8 @@ public sealed class MedicalWoundSystem : EntitySystem
             TransferAggregateDamage(body, -ent.Comp.Injury);
         ent.Comp.Injury = new DamageSpecifier();
         ent.Comp.Bleeding = 0f;
+        ent.Comp.SurgicalAccess = 0;
+        ent.Comp.SurgeryRevision++;
         if (TryComp<OrganComponent>(ent, out var organ) && organ.Body is { } host && HasComp<PhysiologyComponent>(host))
             Synchronize(host);
     }
@@ -261,5 +265,11 @@ public sealed class MedicalWoundSystem : EntitySystem
         if (!damage.AnyPositive())
             return false;
         return !_damage.ChangeDamage(uid, damage, targetPart: part.Value.Owner).Empty;
+    }
+
+    public void ClampSurgicalBleeding(EntityUid patient, MedicalWoundComponent wound)
+    {
+        wound.Bleeding = 0f;
+        Synchronize(patient);
     }
 }

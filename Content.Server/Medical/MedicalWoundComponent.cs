@@ -17,6 +17,11 @@ public sealed partial class MedicalWoundComponent : Component
     [DataField]
     public float Bleeding;
 
+    [DataField]
+    public int SurgicalAccess;
+
+    public int SurgeryRevision;
+
     /// <summary>
     /// Tissue damage left on the attached parent when this part is removed.
     /// </summary>

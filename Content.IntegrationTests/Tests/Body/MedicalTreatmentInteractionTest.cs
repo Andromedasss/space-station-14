@@ -11,6 +11,7 @@ using Content.Shared.Medical;
 using Content.Shared.Movement.Components;
 using Content.Shared.Movement.Systems;
 using Content.Shared.Stacks;
+using Content.Shared.Verbs;
 using Robust.Client.UserInterface.Controls;
 using Robust.Shared.Containers;
 
@@ -18,6 +19,108 @@ namespace Content.IntegrationTests.Tests.Body;
 
 public sealed class MedicalTreatmentInteractionTest : InteractionTest
 {
+    private async Task SurgeryStep(string tool, string action, string part = "Torso", string organ = "")
+    {
+        await PlaceInHands(tool);
+        await Server.WaitPost(() =>
+        {
+            var verbs = SEntMan.System<SharedVerbSystem>().GetLocalVerbs(STarget!.Value, SPlayer, typeof(AlternativeVerb));
+            var verb = verbs.Single(v => v.Text.Trim() == $"Surgery: {action} {part} {organ}".Trim());
+            verb.Act!();
+        });
+        Assert.That(ActiveDoAfters.Count(), Is.EqualTo(1));
+        await AwaitDoAfters();
+    }
+
+    private async Task OpenSurgicalAccess(string part = "Torso")
+    {
+        await SurgeryStep("MedicalTestScalpel", "Incise", part);
+        await SurgeryStep("MedicalTestHemostat", "Clamp", part);
+        await SurgeryStep("MedicalTestRetractor", "Retract", part);
+    }
+
+    [Test]
+    public async Task SurgeryExtractsAndReimplantsPhysicalHeartWithoutErasingTrauma()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        var table = await Spawn("MedicalTestOperatingTable");
+        Robust.Shared.GameObjects.NetEntity heart = default;
+        await Server.WaitPost(() =>
+        {
+            var patient = STarget!.Value;
+            var physical = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(patient)
+                .Single(p => p.Comp2.Kind == MedicalOrganKind.Heart);
+            physical.Comp2.Trauma = 30f;
+            heart = SEntMan.GetNetEntity(physical.Owner);
+            Assert.That(SEntMan.System<SharedBuckleSystem>().TryBuckle(patient, null, SEntMan.GetEntity(table)), Is.True);
+        });
+        await PlaceInHands("MedicalTestExtractor");
+        await Server.WaitAssertion(() => Assert.That(SEntMan.System<SharedVerbSystem>()
+            .GetLocalVerbs(STarget!.Value, SPlayer, typeof(AlternativeVerb))
+            .Any(v => v.Text.Contains("Extract")), Is.False));
+        await OpenSurgicalAccess();
+        await InteractUsing("HandheldHealthAnalyzer");
+        await RunTicks(40);
+        await Client.WaitAssertion(() => Assert.That(GetControlFromChildren<Label>(label => label.Text != null
+            && label.Text.Contains("Torso: surgical access"), GetWindow<HealthAnalyzerWindow>()).Text,
+            Does.Contain("3/3")));
+        await SurgeryStep("MedicalTestExtractor", "Extract", "Torso", "Heart");
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(SEntMan.GetComponent<OrganComponent>(SEntMan.GetEntity(heart)).Body, Is.Null);
+            Assert.That(SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!.HeartFunction, Is.Zero);
+        });
+        await Pickup(heart);
+        await Server.WaitPost(() => SEntMan.System<SharedVerbSystem>()
+            .GetLocalVerbs(STarget!.Value, SPlayer, typeof(AlternativeVerb))
+            .Single(v => v.Text.Trim() == "Surgery: Insert Torso Heart").Act!());
+        Assert.That(ActiveDoAfters.Count(), Is.EqualTo(1));
+        await AwaitDoAfters();
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(SEntMan.GetComponent<OrganComponent>(SEntMan.GetEntity(heart)).Body, Is.EqualTo(STarget!.Value));
+            Assert.That(SEntMan.GetComponent<MedicalOrganComponent>(SEntMan.GetEntity(heart)).Trauma, Is.EqualTo(30f));
+            Assert.That(SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!.HeartFunction, Is.EqualTo(0.7f).Within(0.001f));
+        });
+        await SurgeryStep("MedicalTestCautery", "Close");
+    }
+
+    [TestCase("unbuckle")]
+    [TestCase("site removal")]
+    public async Task SurgeryCancelsWithoutOpeningTissueWhenConditionsChange(string change)
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        var table = await Spawn("MedicalTestOperatingTable");
+        await Server.WaitPost(() => Assert.That(SEntMan.System<SharedBuckleSystem>()
+            .TryBuckle(STarget!.Value, null, SEntMan.GetEntity(table)), Is.True));
+        await PlaceInHands("MedicalTestScalpel");
+        await Server.WaitPost(() => SEntMan.System<SharedVerbSystem>()
+            .GetLocalVerbs(STarget!.Value, SPlayer, typeof(AlternativeVerb))
+            .Single(v => v.Text.Trim() == "Surgery: Incise ArmLeft").Act!());
+        var action = ActiveDoAfters.Single();
+        await Server.WaitPost(() =>
+        {
+            if (change == "unbuckle")
+                SEntMan.System<SharedBuckleSystem>().Unbuckle(STarget!.Value, null);
+            else
+            {
+                var site = SEntMan.GetEntity(((MedicalSurgeryDoAfterEvent) action.Args.Event).Part);
+                var containers = SEntMan.System<SharedContainerSystem>();
+                Assert.That(containers.Remove(site, containers.GetContainer(STarget!.Value, BodyComponent.ContainerID)), Is.True);
+            }
+        });
+        await RunTicks(180);
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(action.Cancelled, Is.True);
+            var site = SEntMan.GetEntity(((MedicalSurgeryDoAfterEvent) action.Args.Event).Part);
+            Assert.That(SEntMan.GetComponent<MedicalWoundComponent>(site).SurgicalAccess, Is.Zero);
+            Assert.That(SEntMan.GetComponent<MedicalWoundComponent>(site).Injury.Empty, Is.True);
+        });
+    }
+
     [TestCase("MobHuman", "MedicalTestOperatingTable")]
     [TestCase("MobMedicalTestHuman", "OperatingTable")]
     public async Task InternalTraumaTreatmentDoesNotApplyOutsideExperimentalSetup(string patientPrototype, string tablePrototype)
@@ -58,6 +161,7 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
             Assert.That(SEntMan.System<MedicalWoundSystem>().TryInjure(patient, "Torso", "Blunt", 100f), Is.True);
             Assert.That(SEntMan.System<SharedBuckleSystem>().TryBuckle(patient, null, SEntMan.GetEntity(table)), Is.True);
         });
+        await OpenSurgicalAccess();
         var kit = await PlaceInHands("MedicalTestOrganRepairKit", 10);
         await Interact(awaitDoAfters: false);
         Assert.That(ActiveDoAfters.Count(), Is.EqualTo(1));
@@ -108,6 +212,9 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         await Interact(awaitDoAfters: false);
         Assert.That(ActiveDoAfters.Count(), Is.Zero, "External bleeding must be stopped first.");
         await InteractUsing("Gauze", 10);
+        await InteractUsing("MedicalTestOrganRepairKit", 10, awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.Zero, "Dressings cannot substitute for surgical access.");
+        await OpenSurgicalAccess();
         await Server.WaitAssertion(() =>
         {
             SEntMan.System<PhysiologySystem>().Update(60f);
@@ -144,6 +251,10 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         await Interact(awaitDoAfters: false);
         Assert.That(ActiveDoAfters.Count(), Is.Zero, "Healthy organs must not consume supplies.");
         await Server.WaitAssertion(() => Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(kit)).Count, Is.EqualTo(6)));
+        await SurgeryStep("MedicalTestCautery", "Close");
+        await Server.WaitAssertion(() => Assert.That(SEntMan.System<BodySystem>()
+            .EnumerateOrgans<MedicalWoundComponent>(STarget!.Value)
+            .Single(p => p.Comp1.Category?.Id == "Torso").Comp2.SurgicalAccess, Is.Zero));
         await RunTicks(900);
         await Server.WaitAssertion(() => Assert.That(SEntMan.System<MobStateSystem>().IsAlive(STarget!.Value), Is.True));
     }

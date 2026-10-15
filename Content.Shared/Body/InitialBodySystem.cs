@@ -22,6 +22,13 @@ public sealed partial class InitialBodySystem : EntitySystem
         return Resolve(body, ref body.Comp, false) && body.Comp.Organs.ContainsKey(category);
     }
 
+    public bool SupportsRelationship(Entity<InitialBodyComponent?> body,
+        ProtoId<OrganCategoryPrototype> parent, ProtoId<OrganCategoryPrototype> child)
+    {
+        return Resolve(body, ref body.Comp, false) && body.Comp.Relationships != null
+            && body.Comp.Relationships.TryGetValue(parent, out var children) && children.Contains(child);
+    }
+
     private void OnMapInit(Entity<InitialBodyComponent> ent, ref MapInitEvent args)
     {
         if (!TryComp<ContainerManagerComponent>(ent, out var containerComp))
