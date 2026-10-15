@@ -123,7 +123,8 @@ public sealed partial class DamageableSystem
         bool ignoreResistances = false,
         bool interruptsDoAfters = true,
         EntityUid? origin = null,
-        bool ignoreGlobalModifiers = false
+        bool ignoreGlobalModifiers = false,
+        EntityUid? targetPart = null
     )
     {
         var damageDone = new DamageSpecifier();
@@ -159,7 +160,7 @@ public sealed partial class DamageableSystem
         if (!ignoreGlobalModifiers)
             damage = ApplyUniversalAllModifiers(damage);
 
-        var evt = new DamageDealtEvent(damage, origin, interruptsDoAfters);
+        var evt = new DamageDealtEvent(damage, origin, interruptsDoAfters, targetPart);
         RaiseLocalEvent(ent, ref evt);
 
         return damage;

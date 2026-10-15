@@ -137,6 +137,12 @@ public sealed class PhysiologySystem : EntitySystem
         }
         if (!hasBrain)
             text.AppendLine("No supported brain: body cannot be revived without transplantation.");
+        text.AppendLine("Localized injuries (unlocated attacks use Torso):");
+        foreach (var part in _body.EnumerateOrgans<MedicalWoundComponent>((uid, body)))
+        {
+            if (part.Comp2.Injury.GetTotal() > 0 || part.Comp2.Bleeding > 0f)
+                text.AppendLine($"{part.Comp1.Category} {GetNetEntity(part.Owner)}: {part.Comp2.Injury}; bleeding={part.Comp2.Bleeding:F3}/bloodstream tick");
+        }
         text.AppendLine("Recent transitions / interventions:");
         foreach (var entry in state.History)
             text.AppendLine(entry);
@@ -190,7 +196,7 @@ public sealed class PhysiologySystem : EntitySystem
         return true;
     }
 
-    private void Record(PhysiologyStateComponent state, string entry)
+    internal void Record(PhysiologyStateComponent state, string entry)
     {
         while (state.History.Count >= 32)
             state.History.Dequeue();

@@ -240,7 +240,7 @@ public sealed partial class DamageableSystem
         }
 
         if (!damageDone.Empty)
-            OnEntityDamageChanged((ent, damageable), damageDone, args.InterruptsDoAfters, args.Origin);
+            OnEntityDamageChanged((ent, damageable), damageDone, args.InterruptsDoAfters, args.Origin, args.TargetPart);
     }
 }
 
@@ -290,7 +290,8 @@ public sealed class DamageModifyEvent(DamageSpecifier damage, EntityUid? origin 
 /// <param name="Origin">The originator of the damage</param>
 /// <param name="InterruptsDoAfters">If the damage being dealt will interrupt do-afters</param>
 [ByRefEvent]
-public readonly record struct DamageDealtEvent(DamageSpecifier Damage, EntityUid? Origin, bool InterruptsDoAfters);
+public readonly record struct DamageDealtEvent(DamageSpecifier Damage, EntityUid? Origin, bool InterruptsDoAfters,
+    EntityUid? TargetPart = null);
 
 [Obsolete("Will be replaced with damage-model specific events; general 'took damage' can be served by DamageDealtEvent")]
 public sealed class DamageChangedEvent : EntityEventArgs
@@ -328,16 +329,23 @@ public sealed class DamageChangedEvent : EntityEventArgs
     /// </summary>
     public readonly EntityUid? Origin;
 
+    /// <summary>
+    /// Explicit physical part hit, if known. Existing attacks do not yet provide a location.
+    /// </summary>
+    public readonly EntityUid? TargetPart;
+
     public DamageChangedEvent(
         DamageableComponent damageable,
         DamageSpecifier? damageDelta,
         bool interruptsDoAfters,
-        EntityUid? origin
+        EntityUid? origin,
+        EntityUid? targetPart = null
     )
     {
         Damageable = damageable;
         DamageDelta = damageDelta;
         Origin = origin;
+        TargetPart = targetPart;
 
         if (DamageDelta is null)
             return;

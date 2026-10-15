@@ -12,6 +12,16 @@
       Brain: OrganMedicalTestBrain
       Heart: OrganMedicalTestHeart
       Lungs: OrganMedicalTestLungs
+      Torso: OrganMedicalTestTorso
+      Head: OrganMedicalTestHead
+      ArmLeft: OrganMedicalTestArmLeft
+      ArmRight: OrganMedicalTestArmRight
+      HandLeft: OrganMedicalTestHandLeft
+      HandRight: OrganMedicalTestHandRight
+      LegLeft: OrganMedicalTestLegLeft
+      LegRight: OrganMedicalTestLegRight
+      FootLeft: OrganMedicalTestFootLeft
+      FootRight: OrganMedicalTestFootRight
 
 - type: entity
   parent: OrganHumanBrain
@@ -35,3 +45,73 @@
   components:
   - type: MedicalOrgan
     kind: Lungs
+
+- type: entity
+  parent: OrganHumanTorso
+  id: OrganMedicalTestTorso
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalWound
+
+- type: entity
+  parent: OrganHumanHead
+  id: OrganMedicalTestHead
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalWound
+
+- type: entity
+  parent: OrganHumanArmLeft
+  id: OrganMedicalTestArmLeft
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalWound
+
+- type: entity
+  parent: OrganHumanArmRight
+  id: OrganMedicalTestArmRight
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalWound
+
+- type: entity
+  parent: OrganHumanHandLeft
+  id: OrganMedicalTestHandLeft
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalWound
+
+- type: entity
+  parent: OrganHumanHandRight
+  id: OrganMedicalTestHandRight
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalWound
+
+- type: entity
+  parent: OrganHumanLegLeft
+  id: OrganMedicalTestLegLeft
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalWound
+
+- type: entity
+  parent: OrganHumanLegRight
+  id: OrganMedicalTestLegRight
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalWound
+
+- type: entity
+  parent: OrganHumanFootLeft
+  id: OrganMedicalTestFootLeft
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalWound
+
+- type: entity
+  parent: OrganHumanFootRight
+  id: OrganMedicalTestFootRight
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalWound
