@@ -22,6 +22,7 @@ public sealed class MedicalWoundSystem : EntitySystem
     [Dependency] private BloodstreamSystem _blood = default!;
     [Dependency] private DamageableSystem _damage = default!;
     [Dependency] private PhysiologySystem _physiology = default!;
+    [Dependency] private OrganRelationSystem _relations = default!;
 
     public override void Initialize()
     {
@@ -134,8 +135,31 @@ public sealed class MedicalWoundSystem : EntitySystem
 
     private void OnRemoved(Entity<PhysiologyComponent> ent, ref OrganRemovedFromEvent args)
     {
+        if (TerminatingOrDeleted(ent) || EntityManager.IsQueuedForDeletion(ent)
+            || !TryComp<BodyComponent>(ent, out var body) || body.LifeStage != ComponentLifeStage.Running)
+            return;
+
         if (TryComp<MedicalWoundComponent>(args.Organ, out var wound))
+        {
             TransferAggregateDamage(ent, -wound.Injury);
+            foreach (var parent in _relations.AllParents(args.Organ))
+            {
+                if (!TryComp<OrganComponent>(parent, out var organ) || organ.Body != ent.Owner
+                    || !HasComp<MedicalWoundComponent>(parent) || TerminatingOrDeleted(parent))
+                    continue;
+
+                if (float.IsFinite(wound.DetachmentDamage) && wound.DetachmentDamage > 0f)
+                {
+                    var damage = new DamageSpecifier { DamageDict = { ["Slash"] = FixedPoint2.New(wound.DetachmentDamage) } };
+                    // Severing tissue bypasses worn armor; insertion alone cannot close this wound.
+                    _damage.ChangeDamage(ent.Owner, damage, ignoreResistances: true,
+                        ignoreGlobalModifiers: true, targetPart: parent.Owner);
+                    if (TryComp<PhysiologyStateComponent>(ent, out var state))
+                        _physiology.Record(state, $"DETACH {Comp<OrganComponent>(args.Organ).Category}: stump on {organ.Category}");
+                }
+                break;
+            }
+        }
         Synchronize(ent);
     }
 

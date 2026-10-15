@@ -17,6 +17,12 @@ public sealed partial class MedicalWoundComponent : Component
     [DataField]
     public float Bleeding;
 
+    /// <summary>
+    /// Tissue damage left on the attached parent when this part is removed.
+    /// </summary>
+    [DataField]
+    public float DetachmentDamage = 20f;
+
     [DataField]
     public Dictionary<ProtoId<DamageTypePrototype>, float> BleedingPerDamage = new()
     {

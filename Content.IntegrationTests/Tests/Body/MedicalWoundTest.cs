@@ -105,19 +105,19 @@ public sealed class MedicalWoundTest : GameTest
         var oldLeg = body.EnumerateOrgans<MedicalWoundComponent>(recipient).Single(p => p.Comp1.Category?.Id == "LegLeft");
         var containers = SEntMan.System<SharedContainerSystem>();
         Assert.That(containers.Remove(leg.Owner, containers.GetContainer(donor, BodyComponent.ContainerID)), Is.True);
-        Assert.That(SComp<BloodstreamComponent>(donor).BleedAmount, Is.Zero);
-        Assert.That(SEntMan.System<DamageableSystem>().GetAllDamage(donor).GetTotal(), Is.EqualTo(FixedPoint2.Zero));
+        Assert.That(SComp<BloodstreamComponent>(donor).BleedAmount, Is.EqualTo(4f).Within(0.001f));
+        Assert.That(SEntMan.System<DamageableSystem>().GetAllDamage(donor).DamageDict["Slash"], Is.EqualTo(FixedPoint2.New(20)));
         Assert.That(leg.Comp2.Bleeding, Is.EqualTo(3f).Within(0.001f));
         Assert.That(containers.Remove(oldLeg.Owner, containers.GetContainer(recipient, BodyComponent.ContainerID)), Is.True);
         Assert.That(containers.Insert(leg.Owner, containers.GetContainer(recipient, BodyComponent.ContainerID)), Is.True);
-        Assert.That(SComp<BloodstreamComponent>(recipient).BleedAmount, Is.EqualTo(3f).Within(0.001f));
+        Assert.That(SComp<BloodstreamComponent>(recipient).BleedAmount, Is.EqualTo(7f).Within(0.001f));
         Assert.That(leg.Comp2.Injury.DamageDict["Piercing"], Is.EqualTo(FixedPoint2.New(10)));
         var damage = SEntMan.System<DamageableSystem>();
         Assert.That(damage.GetAllDamage(recipient).DamageDict["Piercing"], Is.EqualTo(FixedPoint2.New(10)));
         damage.TryChangeDamage(recipient,
             new DamageSpecifier { DamageDict = { ["Piercing"] = FixedPoint2.New(-10) } }, true);
         Assert.That(leg.Comp2.Injury.GetTotal(), Is.EqualTo(FixedPoint2.Zero));
-        Assert.That(damage.GetAllDamage(recipient).GetTotal(), Is.EqualTo(FixedPoint2.Zero));
+        Assert.That(damage.GetAllDamage(recipient).DamageDict["Slash"], Is.EqualTo(FixedPoint2.New(20)));
     }
 
     [Test]
@@ -233,5 +233,38 @@ public sealed class MedicalWoundTest : GameTest
         SEntMan.System<DamageableSystem>().TryChangeDamage(patient,
             new DamageSpecifier { DamageDict = { ["Slash"] = FixedPoint2.New(-10) } }, true);
         Assert.That(parts.All(p => p.Comp2.Injury.GetTotal() == FixedPoint2.Zero), Is.True);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void DetachedHandLeavesTreatableWoundOnAttachedArm()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var parts = body.EnumerateOrgans<MedicalWoundComponent>(patient).ToArray();
+        var hand = parts.Single(p => p.Comp1.Category?.Id == "HandLeft");
+        var arm = parts.Single(p => p.Comp1.Category?.Id == "ArmLeft");
+        var containers = SEntMan.System<SharedContainerSystem>();
+        var container = containers.GetContainer(patient, BodyComponent.ContainerID);
+        Assert.That(containers.Remove(hand.Owner, container), Is.True);
+        Assert.That(arm.Comp2.Injury.DamageDict["Slash"], Is.EqualTo(FixedPoint2.New(20)));
+        Assert.That(SComp<BloodstreamComponent>(patient).BleedAmount, Is.EqualTo(4f).Within(0.001f));
+        Assert.That(containers.Insert(hand.Owner, container), Is.True);
+        Assert.That(arm.Comp2.Bleeding, Is.EqualTo(4f).Within(0.001f), "Container insertion is not surgical closure.");
+        SEntMan.System<BloodstreamSystem>().TryModifyBleedAmount((patient, SComp<BloodstreamComponent>(patient)), -10f);
+        Assert.That(arm.Comp2.Bleeding, Is.Zero);
+        Assert.That(arm.Comp2.Injury.DamageDict["Slash"], Is.EqualTo(FixedPoint2.New(20)));
+        SEntMan.System<RejuvenateSystem>().PerformRejuvenate(patient);
+        Assert.That(arm.Comp2.Injury.Empty, Is.True);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void RemovingBodyComponentDoesNotCreateDetachmentWounds()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var parts = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(patient).ToArray();
+        SEntMan.RemoveComponent<BodyComponent>(patient);
+        Assert.That(parts.All(p => p.Comp2.Injury.Empty && p.Comp2.Bleeding == 0f), Is.True);
     }
 }
