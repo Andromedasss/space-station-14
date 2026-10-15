@@ -6,6 +6,9 @@ using Content.Shared.Body;
 using Content.Shared.Body.Components;
 using Content.Shared.Body.Systems;
 using Content.Shared.Mobs.Systems;
+using Content.Shared.Medical;
+using Content.Shared.Movement.Components;
+using Content.Shared.Movement.Systems;
 using Robust.Client.UserInterface.Controls;
 
 namespace Content.IntegrationTests.Tests.Body;
@@ -26,6 +29,13 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
             Assert.That(GetControlFromChildren<Label>(label => label.Text != null && label.Text.Contains("LegLeft"), window).Text,
                 Does.Contain("injury 20"));
             Assert.That(GetControlFromChildren<Label>(label => label.Text != null && label.Text.Contains("not SpO2"), window).Visible, Is.True);
+            Assert.That(GetControlFromChildren<Label>(label => label.Text != null && label.Text.Contains("Locomotor support"), window).Text,
+                Does.Contain("92%"));
+            var patient = CEntMan.GetEntity(Target!.Value);
+            Assert.That(CEntMan.GetComponent<PhysiologyComponent>(patient).Mobility, Is.EqualTo(0.92f).Within(0.001f));
+            CEntMan.System<MovementSpeedModifierSystem>().RefreshMovementSpeedModifiers(patient);
+            Assert.That(CEntMan.GetComponent<MovementSpeedModifierComponent>(patient).WalkSpeedModifier,
+                Is.EqualTo(0.92f).Within(0.001f));
         });
     }
 

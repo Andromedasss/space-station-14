@@ -128,6 +128,7 @@ public sealed class PhysiologySystem : EntitySystem
             HeartFunction = state.HeartFunction,
             LungFunction = state.LungFunction,
             OxygenDelivery = state.OxygenDelivery,
+            Mobility = Comp<PhysiologyComponent>(uid).Mobility,
             BrainMissing = true,
         };
         foreach (var organ in _body.EnumerateOrgans<CerebralHealthComponent>((uid, body)))
@@ -158,6 +159,7 @@ public sealed class PhysiologySystem : EntitySystem
         if (TryComp<MobStateComponent>(uid, out var mob))
             text.AppendLine($"Mob state: {mob.CurrentState}");
         text.AppendLine($"Blood fraction: {state.BloodFraction:F3}; heart: {state.HeartFunction:F3}; lungs: {state.LungFunction:F3}");
+        text.AppendLine($"Locomotor support modifier: {Comp<PhysiologyComponent>(uid).Mobility:F3}");
         text.AppendLine($"Respiratory supply: {state.RespiratorySupply:F3}; delivery = blood * heart * lungs * supply = {state.OxygenDelivery:F3}");
         text.AppendLine($"Limiting factor: {state.LimitingFactor}");
         var hasBrain = false;

@@ -25,6 +25,7 @@ health-analyzer-window-scan-mode-inactive = Inactive
 health-analyzer-popup-scan-target = {CAPITALIZE(THE($user))} is trying to scan you!
 
 health-analyzer-physiology-title = Experimental physiology (game units)
+health-analyzer-physiology-mobility = Locomotor support: {$mobility}% speed (before other modifiers)
 health-analyzer-physiology-organs = Heart: {$heart}% / Lungs: {$lungs}%
 health-analyzer-physiology-delivery = Oxygen delivery: {$delivery}% (not SpO2)
 health-analyzer-physiology-brain = Brain: oxygen debt {$debt}s / injury {$damage}/100

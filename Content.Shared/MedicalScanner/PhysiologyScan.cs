@@ -14,6 +14,7 @@ public sealed class PhysiologyScan
     public float OxygenDebt;
     public float BrainDamage;
     public bool BrainMissing;
+    public float Mobility;
     public List<LocalizedInjuryScan> Injuries = new();
 }
 

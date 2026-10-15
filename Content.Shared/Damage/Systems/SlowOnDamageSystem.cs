@@ -3,6 +3,7 @@ using Content.Shared.Damage.Components;
 using Content.Shared.Examine;
 using Content.Shared.FixedPoint;
 using Content.Shared.Inventory;
+using Content.Shared.Medical;
 using Content.Shared.Movement.Systems;
 using Content.Shared.StatusEffectNew;
 
@@ -32,6 +33,10 @@ public sealed partial class SlowOnDamageSystem : EntitySystem
 
     private void OnRefreshMovespeed(EntityUid uid, SlowOnDamageComponent component, RefreshMovementSpeedModifiersEvent args)
     {
+        // Experimental patients use local support injuries, not total damage, for mobility.
+        if (HasComp<PhysiologyComponent>(uid))
+            return;
+
         if (!TryComp<DamageableComponent>(uid, out var damage))
             return;
 

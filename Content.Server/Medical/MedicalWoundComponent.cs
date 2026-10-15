@@ -23,6 +23,13 @@ public sealed partial class MedicalWoundComponent : Component
     [DataField]
     public float DetachmentDamage = 20f;
 
+    /// <summary>
+    /// Local tissue injury at which this part provides no locomotor support.
+    /// Only legs and feet participate in the first mobility model.
+    /// </summary>
+    [DataField]
+    public float SupportDamage = 100f;
+
     [DataField]
     public Dictionary<ProtoId<DamageTypePrototype>, float> BleedingPerDamage = new()
     {

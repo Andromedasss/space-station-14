@@ -114,6 +114,8 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
                 ("lungs", (physiology.LungFunction * 100).ToString("F0")))));
             PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-delivery",
                 ("delivery", (physiology.OxygenDelivery * 100).ToString("F0")))));
+            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-mobility",
+                ("mobility", (physiology.Mobility * 100).ToString("F0")))));
             var brainStatus = physiology.BrainMissing ? "health-analyzer-physiology-brain-missing"
                 : physiology.BrainDamage >= PhysiologyModel.MaximumBrainDamage ? "health-analyzer-physiology-brain-dead"
                 : "health-analyzer-physiology-brain";

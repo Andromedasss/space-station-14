@@ -13,6 +13,8 @@ using Content.Shared.FixedPoint;
 using Content.Shared.DoAfter;
 using Content.Shared.Medical;
 using Content.Shared.Mobs.Systems;
+using Content.Shared.Movement.Components;
+using Content.Shared.Movement.Systems;
 using Content.Shared.Stacks;
 using Robust.Shared.Containers;
 
@@ -22,6 +24,62 @@ namespace Content.IntegrationTests.Tests.Body;
 [TestOf(typeof(MedicalWoundSystem))]
 public sealed class MedicalWoundTest : GameTest
 {
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void LocalSupportInjurySlowsMovementAndTissueRepairRestoresIt()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var wounds = SEntMan.System<MedicalWoundSystem>();
+        var speed = SComp<MovementSpeedModifierComponent>(patient);
+        Assert.That(SComp<PhysiologyComponent>(patient).Mobility, Is.EqualTo(1f).Within(0.001f));
+        wounds.TryInjure(patient, "ArmLeft", "Blunt", 100f);
+        Assert.That(speed.WalkSpeedModifier, Is.EqualTo(1f).Within(0.001f), "Arm injury is not leg injury.");
+        wounds.TryInjure(patient, "LegLeft", "Slash", 50f);
+        Assert.That(speed.WalkSpeedModifier, Is.EqualTo(0.8f).Within(0.001f));
+        Assert.That(speed.SprintSpeedModifier, Is.EqualTo(0.8f).Within(0.001f));
+        SEntMan.System<BloodstreamSystem>().TryModifyBleedAmount((patient, SComp<BloodstreamComponent>(patient)), -10f);
+        Assert.That(speed.WalkSpeedModifier, Is.EqualTo(0.8f).Within(0.001f), "Hemostasis is not tissue repair.");
+        SEntMan.System<DamageableSystem>().TryChangeDamage(patient,
+            new DamageSpecifier { DamageDict = { ["Slash"] = FixedPoint2.New(-50) } }, true);
+        Assert.That(speed.WalkSpeedModifier, Is.EqualTo(1f).Within(0.001f));
+        wounds.TryInjure(patient, "FootRight", "Blunt", 100f);
+        Assert.That(speed.WalkSpeedModifier, Is.EqualTo(0.6f).Within(0.001f));
+        wounds.TryInjure(patient, "LegRight", "Blunt", 100f);
+        Assert.That(speed.WalkSpeedModifier, Is.EqualTo(0.6f).Within(0.001f), "The same side must not be penalized twice.");
+        wounds.TryInjure(patient, "LegLeft", "Blunt", 1000f);
+        Assert.That(speed.WalkSpeedModifier, Is.EqualTo(0.2f).Within(0.001f));
+        SEntMan.System<RejuvenateSystem>().PerformRejuvenate(patient);
+        Assert.That(speed.WalkSpeedModifier, Is.EqualTo(1f).Within(0.001f));
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void MissingSupportAndWoundedTransplantsAffectOnlyExperimentalMobility()
+    {
+        var donor = SSpawn("MobMedicalTestHuman");
+        var patient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var leg = body.EnumerateOrgans<MedicalWoundComponent>(patient).Single(p => p.Comp1.Category?.Id == "LegLeft");
+        var replacement = body.EnumerateOrgans<MedicalWoundComponent>(donor).Single(p => p.Comp1.Category?.Id == "LegLeft");
+        SEntMan.System<MedicalWoundSystem>().TryInjure(donor, "LegLeft", "Blunt", 50f);
+        var containers = SEntMan.System<SharedContainerSystem>();
+        var container = containers.GetContainer(patient, BodyComponent.ContainerID);
+        containers.Remove(leg.Owner, container);
+        Assert.That(SComp<PhysiologyComponent>(patient).Mobility, Is.EqualTo(0.6f).Within(0.001f));
+        containers.Remove(replacement.Owner, containers.GetContainer(donor, BodyComponent.ContainerID));
+        containers.Insert(replacement.Owner, container);
+        Assert.That(SComp<PhysiologyComponent>(patient).Mobility, Is.EqualTo(0.8f).Within(0.001f));
+        SEntMan.System<RejuvenateSystem>().PerformRejuvenate(replacement.Owner);
+        Assert.That(SComp<PhysiologyComponent>(patient).Mobility, Is.EqualTo(1f).Within(0.001f));
+
+        var upstream = SSpawn("MobHuman");
+        SEntMan.System<DamageableSystem>().TryChangeDamage(upstream,
+            new DamageSpecifier { DamageDict = { ["Blunt"] = FixedPoint2.New(90) } }, true);
+        SEntMan.System<MovementSpeedModifierSystem>().RefreshMovementSpeedModifiers(upstream);
+        Assert.That(SComp<MovementSpeedModifierComponent>(upstream).WalkSpeedModifier, Is.LessThan(1f));
+        Assert.That(SEntMan.HasComponent<PhysiologyComponent>(upstream), Is.False);
+    }
+
     [Test]
     [RunOnSide(Side.Server)]
     public void LocatedInjuryClottingAndBandagingPersist()

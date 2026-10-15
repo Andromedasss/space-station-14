@@ -7,6 +7,7 @@ using Content.Shared.Damage.Prototypes;
 using Content.Shared.Damage.Systems;
 using Content.Shared.FixedPoint;
 using Content.Shared.Medical;
+using Content.Shared.Movement.Systems;
 using Content.Shared.Rejuvenate;
 using Robust.Shared.Prototypes;
 
@@ -23,6 +24,7 @@ public sealed class MedicalWoundSystem : EntitySystem
     [Dependency] private DamageableSystem _damage = default!;
     [Dependency] private PhysiologySystem _physiology = default!;
     [Dependency] private OrganRelationSystem _relations = default!;
+    [Dependency] private MovementSpeedModifierSystem _movement = default!;
 
     public override void Initialize()
     {
@@ -33,6 +35,12 @@ public sealed class MedicalWoundSystem : EntitySystem
         SubscribeLocalEvent<PhysiologyComponent, OrganRemovedFromEvent>(OnRemoved);
         SubscribeLocalEvent<PhysiologyStateComponent, RejuvenateEvent>(OnRejuvenate);
         SubscribeLocalEvent<MedicalWoundComponent, RejuvenateEvent>(OnPartRejuvenate);
+        SubscribeLocalEvent<PhysiologyComponent, MapInitEvent>(OnMapInit);
+    }
+
+    private void OnMapInit(Entity<PhysiologyComponent> ent, ref MapInitEvent args)
+    {
+        Synchronize(ent);
     }
 
     private void OnDamageChanged(Entity<PhysiologyComponent> ent, ref DamageChangedEvent args)
@@ -94,6 +102,36 @@ public sealed class MedicalWoundSystem : EntitySystem
 
     private void Synchronize(EntityUid uid)
     {
+        if (TryComp<PhysiologyComponent>(uid, out var physiology))
+        {
+            var leftLeg = 0f;
+            var rightLeg = 0f;
+            var leftFoot = 0f;
+            var rightFoot = 0f;
+            foreach (var part in _body.EnumerateOrgans<MedicalWoundComponent>(uid))
+            {
+                var support = float.IsFinite(part.Comp2.SupportDamage) && part.Comp2.SupportDamage > 0f
+                    ? Math.Clamp(1f - part.Comp2.Injury.GetTotal().Float() / part.Comp2.SupportDamage, 0f, 1f)
+                    : 0f;
+                switch (part.Comp1.Category?.Id)
+                {
+                    case "LegLeft": leftLeg = Math.Max(leftLeg, support); break;
+                    case "LegRight": rightLeg = Math.Max(rightLeg, support); break;
+                    case "FootLeft": leftFoot = Math.Max(leftFoot, support); break;
+                    case "FootRight": rightFoot = Math.Max(rightFoot, support); break;
+                }
+            }
+
+            // Each side needs both a leg and a foot. Keep a limited fallback for dragging oneself.
+            var mobility = 0.2f + 0.4f * (Math.Min(leftLeg, leftFoot) + Math.Min(rightLeg, rightFoot));
+            if (physiology.Mobility != mobility)
+            {
+                physiology.Mobility = mobility;
+                Dirty(uid, physiology);
+            }
+            _movement.RefreshMovementSpeedModifiers(uid);
+        }
+
         if (!TryComp<BloodstreamComponent>(uid, out var blood))
             return;
 
