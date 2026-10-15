@@ -88,7 +88,10 @@ public sealed class MedicalAnatomySystem : EntitySystem
         _relations.Orphan(args.Entity);
         if (descendants.Length == 0)
             return;
-        var bundle = _containers.EnsureContainer<Container>(args.Entity, DetachedParts);
+        // A deleted root cannot own a new container. Its surviving descendants
+        // must still leave the donor, but become separate detached parts.
+        var bundle = TerminatingOrDeleted(args.Entity) || EntityManager.IsQueuedForDeletion(args.Entity)
+            ? null : _containers.EnsureContainer<Container>(args.Entity, DetachedParts);
         foreach (var child in descendants)
             _moving.Add(child);
         try
@@ -96,7 +99,10 @@ public sealed class MedicalAnatomySystem : EntitySystem
             foreach (var child in descendants)
             {
                 _containers.Remove(child, args.Container);
-                _containers.Insert(child, bundle);
+                if (bundle != null)
+                    _containers.Insert(child, bundle);
+                else
+                    _relations.Orphan(child);
             }
         }
         finally

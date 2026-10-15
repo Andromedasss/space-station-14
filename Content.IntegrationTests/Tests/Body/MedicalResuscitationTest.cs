@@ -222,10 +222,9 @@ public sealed class MedicalResuscitationTest : InteractionTest
 
     private async Task StartCompressions()
     {
-        await Server.WaitPost(() => SEntMan.System<SharedVerbSystem>()
-            .GetLocalVerbs(STarget!.Value, SPlayer, typeof(AlternativeVerb))
-            .Single(v => v.Text == "Perform experimental chest compressions").Act!());
-        await RunTicks(2);
+        await Client.WaitPost(() => CEntMan.System<Content.Client.Verbs.VerbSystem>()
+            .ExecuteVerb(Target!.Value, new AlternativeVerb { Text = "Perform experimental chest compressions" }));
+        await RunTicks(10);
         Assert.That(ActiveDoAfters.Count(), Is.EqualTo(1));
     }
 }

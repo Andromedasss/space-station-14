@@ -8,6 +8,7 @@ namespace Content.Server.Medical;
 [RegisterComponent]
 public sealed partial class PhysiologyStateComponent : Component
 {
+    [DataField]
     public bool AnatomyInitialized;
 
     [ViewVariables]

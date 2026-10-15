@@ -13,6 +13,7 @@ using Content.Shared.Damage.Systems;
 using Content.Shared.FixedPoint;
 using Content.Shared.Mobs;
 using Content.Shared.Mobs.Systems;
+using Content.Shared.Mind;
 using Robust.Shared.Containers;
 using Robust.Shared.GameObjects;
 
@@ -22,6 +23,47 @@ namespace Content.IntegrationTests.Tests.Body;
 [TestOf(typeof(PhysiologySystem))]
 public sealed class PhysiologyTest : GameTest
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    [RunOnSide(Side.Server)]
+    public void PhysicalBrainTransplantCarriesMindAndInjury(bool wholeHead)
+    {
+        var donor = SSpawn("MobMedicalTestHuman");
+        var recipient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var minds = SEntMan.System<SharedMindSystem>();
+        var containers = SEntMan.System<SharedContainerSystem>();
+        var mind = minds.CreateMind(null);
+        var recipientMind = minds.CreateMind(null);
+        minds.TransferTo(mind, donor, mind: mind);
+        minds.TransferTo(recipientMind, recipient, mind: recipientMind);
+        var brain = body.EnumerateOrgans<CerebralHealthComponent>(donor).Single();
+        var oldBrain = body.EnumerateOrgans<CerebralHealthComponent>(recipient).Single();
+        brain.Comp2.Damage = 42f;
+        var incoming = wholeHead ? body.EnumerateOrgans<MedicalWoundComponent>(donor)
+            .Single(p => p.Comp1.Category?.Id == "Head").Owner : brain.Owner;
+        var outgoing = wholeHead ? body.EnumerateOrgans<MedicalWoundComponent>(recipient)
+            .Single(p => p.Comp1.Category?.Id == "Head").Owner : oldBrain.Owner;
+        Assert.That(containers.Remove(incoming, containers.GetContainer(donor, BodyComponent.ContainerID)), Is.True);
+        Assert.That(mind.Comp.OwnedEntity, Is.EqualTo(brain.Owner));
+        Assert.That(containers.Remove(outgoing, containers.GetContainer(recipient, BodyComponent.ContainerID)), Is.True);
+        Assert.That(recipientMind.Comp.OwnedEntity, Is.EqualTo(oldBrain.Owner));
+        Assert.That(containers.Insert(incoming, containers.GetContainer(recipient, BodyComponent.ContainerID)), Is.True);
+        Assert.That(mind.Comp.OwnedEntity, Is.EqualTo(recipient));
+        Assert.That(recipientMind.Comp.OwnedEntity, Is.EqualTo(oldBrain.Owner));
+        Assert.That(brain.Comp2.Damage, Is.EqualTo(42f));
+        Assert.That(body.EnumerateOrgans<CerebralHealthComponent>(recipient).Single().Owner, Is.EqualTo(brain.Owner));
+        SEntMan.System<PhysiologySystem>().Update(0f);
+        Assert.That(SEntMan.System<MobStateSystem>().IsDead(donor), Is.True);
+        minds.WipeMind(mind.Owner, mind.Comp);
+        minds.WipeMind(recipientMind.Owner, recipientMind.Comp);
+        SDeleteNow(donor);
+        SDeleteNow(recipient);
+        SDeleteNow(outgoing);
+        SDeleteNow(mind.Owner);
+        SDeleteNow(recipientMind.Owner);
+    }
+
     [Test]
     [RunOnSide(Side.Server)]
     public void TorsoTraumaReducesOrganFunctionWithoutBeingHealedByDressingsOrBlood()
