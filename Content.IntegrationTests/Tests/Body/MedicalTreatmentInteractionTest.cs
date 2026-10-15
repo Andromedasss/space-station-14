@@ -60,6 +60,50 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         });
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task WoundDrivenHypoxiaRequiresTreatmentBeforeBrainDeath(bool delayedTreatment)
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        // Repeated injuries sustain hemorrhage despite natural clotting and blood regeneration.
+        for (var i = 0; i < 6; i++)
+        {
+            var damage = i == 0 ? 34f : 12f;
+            await Server.WaitPost(() => Assert.That(SEntMan.System<MedicalWoundSystem>()
+                .TryInjure(STarget!.Value, "LegLeft", "Piercing", damage), Is.True));
+            await RunTicks(900);
+        }
+        await Server.WaitAssertion(() =>
+        {
+            var patient = STarget!.Value;
+            Assert.That(SEntMan.System<BloodstreamSystem>().GetBloodLevel(patient), Is.LessThan(0.5f));
+            Assert.That(SEntMan.System<MobStateSystem>().IsCritical(patient), Is.True,
+                SEntMan.System<PhysiologySystem>().Inspect(patient));
+        });
+        if (delayedTreatment)
+        {
+            await RunTicks(5400);
+            await Server.WaitAssertion(() => Assert.That(SEntMan.System<MobStateSystem>().IsDead(STarget!.Value), Is.True));
+        }
+        await InteractUsing("Gauze", 10);
+        await InteractUsing("Bloodpack", 10);
+        if (delayedTreatment)
+            await InteractUsing("Bloodpack", 10);
+        await RunTicks(900);
+        await Server.WaitAssertion(() =>
+        {
+            var patient = STarget!.Value;
+            Assert.That(SEntMan.GetComponent<BloodstreamComponent>(patient).BleedAmount, Is.Zero);
+            Assert.That(SEntMan.System<BloodstreamSystem>().GetBloodLevel(patient), Is.GreaterThan(0.5f));
+            var brain = SEntMan.System<BodySystem>().EnumerateOrgans<CerebralHealthComponent>(patient).Single().Comp2;
+            Assert.That(brain.Damage >= 100f, Is.EqualTo(delayedTreatment));
+            Assert.That(SEntMan.System<MobStateSystem>().IsAlive(patient), Is.EqualTo(!delayedTreatment),
+                SEntMan.System<PhysiologySystem>().Inspect(patient));
+            Assert.That(SEntMan.System<MobStateSystem>().IsDead(patient), Is.EqualTo(delayedTreatment));
+        });
+    }
+
     [Test]
     public async Task BloodpackInteractionRestoresPerfusionAndConsciousnessAfterHemostasis()
     {
