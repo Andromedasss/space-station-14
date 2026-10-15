@@ -29,6 +29,43 @@ public sealed class MedicalWoundTest : GameTest
 {
     [Test]
     [RunOnSide(Side.Server)]
+    public void SystemicHealingRepairsBiologicalInjuryButNotProstheticDamage()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var wounds = SEntMan.System<MedicalWoundSystem>();
+        var damage = SEntMan.System<DamageableSystem>();
+        var prosthetic = body.EnumerateOrgans<MedicalWoundComponent>(patient)
+            .Single(p => p.Comp1.Category?.Id == "HandLeft");
+        prosthetic.Comp2.Prosthetic = true;
+        wounds.TryInjure(patient, "HandLeft", "Slash", 30f);
+        wounds.TryInjure(patient, "ArmRight", "Slash", 10f);
+        wounds.TryInjure(patient, "LegRight", "Slash", 20f);
+        damage.TryChangeDamage(patient,
+            new DamageSpecifier { DamageDict = { ["Bloodloss"] = FixedPoint2.New(10) } }, true);
+        var repair = new DamageSpecifier
+        {
+            DamageDict = { ["Slash"] = FixedPoint2.New(-100), ["Bloodloss"] = FixedPoint2.New(-100) },
+        };
+
+        damage.TryChangeDamage(patient, repair, true);
+        Assert.That(prosthetic.Comp2.Injury.GetTotal(), Is.EqualTo(FixedPoint2.New(30)));
+        Assert.That(body.EnumerateOrgans<MedicalWoundComponent>(patient)
+            .Where(p => !p.Comp2.Prosthetic).All(p => p.Comp2.Injury.GetTotal() == FixedPoint2.Zero), Is.True);
+        Assert.That(damage.GetAllDamage(patient).DamageDict["Slash"], Is.EqualTo(FixedPoint2.New(30)));
+        Assert.That(damage.GetAllDamage(patient).DamageDict["Bloodloss"], Is.EqualTo(FixedPoint2.Zero));
+        damage.TryChangeDamage(patient, repair, true);
+        Assert.That(damage.GetAllDamage(patient).DamageDict["Slash"], Is.EqualTo(FixedPoint2.New(30)));
+
+        var ordinary = SSpawn("MobHuman");
+        damage.TryChangeDamage(ordinary,
+            new DamageSpecifier { DamageDict = { ["Slash"] = FixedPoint2.New(30) } }, true);
+        damage.TryChangeDamage(ordinary, repair, true);
+        Assert.That(damage.GetAllDamage(ordinary).GetTotal(), Is.EqualTo(FixedPoint2.Zero));
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
     public void LocalHealingCannotRepairAnotherPartOrUseForeignTissue()
     {
         var patient = SSpawn("MobMedicalTestHuman");
@@ -142,6 +179,84 @@ public sealed class MedicalWoundTest : GameTest
         SEntMan.System<MovementSpeedModifierSystem>().RefreshMovementSpeedModifiers(upstream);
         Assert.That(SComp<MovementSpeedModifierComponent>(upstream).WalkSpeedModifier, Is.LessThan(1f));
         Assert.That(SEntMan.HasComponent<PhysiologyComponent>(upstream), Is.False);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void FractureFollowsPhysicalPartAndRejuvenationRestoresSupport()
+    {
+        var donor = SSpawn("MobMedicalTestHuman");
+        var recipient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var leg = body.EnumerateOrgans<MedicalWoundComponent>(donor).Single(p => p.Comp1.Category?.Id == "LegLeft");
+        var oldLeg = body.EnumerateOrgans<MedicalWoundComponent>(recipient).Single(p => p.Comp1.Category?.Id == "LegLeft");
+        SEntMan.System<MedicalWoundSystem>().TryInjure(donor, "LegLeft", "Blunt", 60f);
+        SEntMan.System<DamageableSystem>().TryChangeDamage(donor,
+            new DamageSpecifier { DamageDict = { ["Blunt"] = FixedPoint2.New(-60) } }, true, targetPart: leg.Owner);
+        Assert.That(leg.Comp2.Fractured, Is.True);
+        Assert.That(leg.Comp2.Injury.GetTotal(), Is.EqualTo(FixedPoint2.Zero));
+        var containers = SEntMan.System<SharedContainerSystem>();
+        containers.Remove(leg.Owner, containers.GetContainer(donor, BodyComponent.ContainerID));
+        containers.Remove(oldLeg.Owner, containers.GetContainer(recipient, BodyComponent.ContainerID));
+        Assert.That(containers.Insert(leg.Owner, containers.GetContainer(recipient, BodyComponent.ContainerID)), Is.True);
+        Assert.That(SComp<PhysiologyComponent>(recipient).Mobility, Is.EqualTo(0.6f).Within(0.001f));
+        Assert.That(SEntMan.System<PhysiologySystem>().Scan(recipient)!.Fractures, Does.Contain("LegLeft"));
+        SEntMan.System<RejuvenateSystem>().PerformRejuvenate(leg.Owner);
+        Assert.That(leg.Comp2.Fractured, Is.False);
+        Assert.That(SComp<PhysiologyComponent>(recipient).Mobility, Is.EqualTo(1f).Within(0.001f));
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void VascularInjuryFollowsTransplantAndRejuvenationClearsIt()
+    {
+        var donor = SSpawn("MobMedicalTestHuman");
+        var recipient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var leg = body.EnumerateOrgans<MedicalWoundComponent>(donor).Single(p => p.Comp1.Category?.Id == "LegLeft");
+        var oldLeg = body.EnumerateOrgans<MedicalWoundComponent>(recipient).Single(p => p.Comp1.Category?.Id == "LegLeft");
+        SEntMan.System<MedicalWoundSystem>().TryInjure(donor, "LegLeft", "Piercing", 60f);
+        SEntMan.System<BloodstreamSystem>().TryModifyBleedAmount(donor, -10f);
+        Assert.That(leg.Comp2.VascularDamage, Is.EqualTo(20f));
+        var containers = SEntMan.System<SharedContainerSystem>();
+        containers.Remove(leg.Owner, containers.GetContainer(donor, BodyComponent.ContainerID));
+        containers.Remove(oldLeg.Owner, containers.GetContainer(recipient, BodyComponent.ContainerID));
+        Assert.That(containers.Insert(leg.Owner, containers.GetContainer(recipient, BodyComponent.ContainerID)), Is.True);
+        Assert.That(SEntMan.System<PhysiologySystem>().Scan(recipient)!.VascularInjuries.Single().Category, Is.EqualTo("LegLeft"));
+        Assert.That(MedicalWoundSystem.InternalBleeding(leg.Comp2), Is.EqualTo(0.4f).Within(0.001f));
+        SEntMan.System<RejuvenateSystem>().PerformRejuvenate(leg.Owner);
+        Assert.That(leg.Comp2.VascularDamage, Is.Zero);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void ProlongedLocalIschemiaCausesPersistentNecrosisButEarlyRepairPreventsIt()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var wounds = SEntMan.System<MedicalWoundSystem>();
+        var physiology = SEntMan.System<PhysiologySystem>();
+        var parts = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(patient).ToArray();
+        var leg = parts.Single(p => p.Comp1.Category?.Id == "LegLeft");
+        var arm = parts.Single(p => p.Comp1.Category?.Id == "ArmLeft");
+        leg.Comp2.VascularDamage = 100f;
+        arm.Comp2.VascularDamage = 100f;
+        leg.Comp2.InternalBleedingPerDamage = 0f;
+        arm.Comp2.InternalBleedingPerDamage = 0f;
+        physiology.Scan(patient);
+        wounds.Update(90f);
+        Assert.That(leg.Comp2.Necrotic, Is.False);
+        wounds.RepairVessel(arm.Comp2);
+        wounds.Update(91f);
+        Assert.That(leg.Comp2.Necrotic, Is.True);
+        Assert.That(arm.Comp2.Necrotic, Is.False);
+        wounds.RepairVessel(leg.Comp2);
+        wounds.Update(180f);
+        Assert.That(leg.Comp2.Necrotic, Is.True, "Restoring flow does not revive dead tissue.");
+        Assert.That(SComp<PhysiologyComponent>(patient).Mobility, Is.EqualTo(0.6f).Within(0.001f));
+        Assert.That(physiology.Scan(patient)!.NecroticParts, Does.Contain("LegLeft"));
+        SEntMan.System<RejuvenateSystem>().PerformRejuvenate(patient);
+        Assert.That(leg.Comp2.Necrotic, Is.False);
+        Assert.That(SComp<PhysiologyComponent>(patient).Mobility, Is.EqualTo(1f).Within(0.001f));
     }
 
     [Test]

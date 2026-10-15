@@ -29,11 +29,37 @@ public sealed partial class MedicalWoundComponent : Component
     public float DetachmentDamage = 20f;
 
     /// <summary>
-    /// Local tissue injury at which this part provides no locomotor support.
-    /// Only legs and feet participate in the first mobility model.
+    /// Local structural injury at which this part provides no limb function.
     /// </summary>
     [DataField]
     public float SupportDamage = 100f;
+
+    [DataField]
+    public bool Fractured;
+
+    [DataField]
+    public float FractureThreshold = 60f;
+
+    /// <summary>
+    /// Deep vascular injury. External dressings and clotting do not repair it.
+    /// </summary>
+    [DataField]
+    public float VascularDamage;
+
+    [DataField]
+    public float VascularThreshold = 40f;
+
+    [DataField]
+    public float InternalBleedingPerDamage = 0.02f;
+
+    [DataField]
+    public float IschemiaDebt;
+
+    [DataField]
+    public bool Necrotic;
+
+    [DataField]
+    public bool Prosthetic;
 
     [DataField]
     public Dictionary<ProtoId<DamageTypePrototype>, float> BleedingPerDamage = new()

@@ -39,3 +39,7 @@ medical-surgery-step = Surgery: {$action} {$part} {$organ}
 medical-surgery-complete = Surgical step completed: {$action}.
 medical-surgery-access = {$part}: surgical access {$stage}/3 (1 incised, 2 clamped, 3 exposed). Close after surgery.
 medical-target-zone = Target zone: {$part}
+medical-fracture = {$part}: fracture. Tissue repair cannot restore skeletal support.
+medical-vascular-injury = {$part}: vascular injury {$damage}/100; internal bleeding {$bleeding} units/s. Requires surgical repair.
+medical-necrosis = {$part}: irreversible tissue necrosis. Replace the nonfunctional part.
+medical-prosthetic = {$part}: mechanical prosthesis. Repair mechanically, not with dressings.

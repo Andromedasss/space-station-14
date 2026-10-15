@@ -131,6 +131,16 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
             foreach (var site in physiology.SurgicalSites)
                 PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-surgery-access",
                     ("part", site.Category), ("stage", site.Stage))));
+            foreach (var part in physiology.Fractures)
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-fracture", ("part", part))));
+            foreach (var part in physiology.NecroticParts)
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-necrosis", ("part", part))));
+            foreach (var part in physiology.ProstheticParts)
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-prosthetic", ("part", part))));
+            foreach (var injury in physiology.VascularInjuries)
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-vascular-injury",
+                    ("part", injury.Category), ("damage", injury.Damage.ToString("F1")),
+                    ("bleeding", injury.InternalBleeding.ToString("F2")))));
         }
 
         // Total Damage

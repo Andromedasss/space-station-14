@@ -18,6 +18,10 @@ public sealed class PhysiologyScan
     public List<LocalizedInjuryScan> Injuries = new();
     public List<InternalOrganInjuryScan> OrganInjuries = new();
     public List<SurgicalAccessScan> SurgicalSites = new();
+    public List<string> Fractures = new();
+    public List<VascularInjuryScan> VascularInjuries = new();
+    public List<string> NecroticParts = new();
+    public List<string> ProstheticParts = new();
 }
 
 [Serializable, NetSerializable]
@@ -28,3 +32,6 @@ public sealed record InternalOrganInjuryScan(string Category, float Trauma);
 
 [Serializable, NetSerializable]
 public sealed record SurgicalAccessScan(string Category, int Stage);
+
+[Serializable, NetSerializable]
+public sealed record VascularInjuryScan(string Category, float Damage, float InternalBleeding);

@@ -30,9 +30,12 @@ public sealed class MedicalWoundSystem : EntitySystem
     [Dependency] private SharedHandsSystem _hands = default!;
     [Dependency] private MedicalHandSystem _medicalHands = default!;
 
+    private float _internalBleedingElapsed;
+
     public override void Initialize()
     {
         base.Initialize();
+        UpdatesAfter.Add(typeof(BloodstreamSystem));
         SubscribeLocalEvent<PhysiologyComponent, DamageChangedEvent>(OnDamageChanged);
         SubscribeLocalEvent<PhysiologyComponent, LocalizedDamageAttemptEvent>(OnLocalizedDamage);
         SubscribeLocalEvent<PhysiologyComponent, LocalizedHemostasisEvent>(OnLocalizedHemostasis);
@@ -50,6 +53,47 @@ public sealed class MedicalWoundSystem : EntitySystem
         Synchronize(ent);
     }
 
+    public override void Update(float frameTime)
+    {
+        base.Update(frameTime);
+        _internalBleedingElapsed += frameTime;
+        if (_internalBleedingElapsed < 1f)
+            return;
+        var elapsed = _internalBleedingElapsed;
+        _internalBleedingElapsed = 0f;
+        var query = EntityQueryEnumerator<PhysiologyComponent, BodyComponent, BloodstreamComponent>();
+        while (query.MoveNext(out var uid, out _, out _, out var blood))
+        {
+            var rate = 0f;
+            foreach (var part in _body.EnumerateOrgans<MedicalWoundComponent>(uid))
+            {
+                rate += InternalBleeding(part.Comp2);
+                if (part.Comp2.Prosthetic || part.Comp1.Category?.Id is not ("ArmLeft" or "ArmRight" or "HandLeft" or "HandRight"
+                        or "LegLeft" or "LegRight" or "FootLeft" or "FootRight")
+                    || !TryComp<PhysiologyStateComponent>(uid, out var state))
+                    continue;
+                var perfusion = state.OxygenDelivery * (1f - Math.Clamp(part.Comp2.VascularDamage / 100f, 0f, 1f));
+                part.Comp2.IschemiaDebt = Math.Clamp(part.Comp2.IschemiaDebt + (perfusion < 0.2f ? elapsed : -2f * elapsed), 0f, 180f);
+                if (!part.Comp2.Necrotic && part.Comp2.IschemiaDebt >= 180f)
+                {
+                    part.Comp2.Necrotic = true;
+                    part.Comp2.SurgeryRevision++;
+                    _physiology.Record(state, $"NECROSIS {part.Comp1.Category}");
+                    Synchronize(uid);
+                }
+            }
+            if (rate > 0f)
+                _blood.TryModifyBloodLevel((uid, blood), -FixedPoint2.New(Math.Min(rate, 10f) * elapsed));
+        }
+    }
+
+    public static float InternalBleeding(MedicalWoundComponent wound)
+    {
+        return float.IsFinite(wound.VascularDamage) && float.IsFinite(wound.InternalBleedingPerDamage)
+            ? Math.Clamp(wound.VascularDamage, 0f, 100f) * Math.Clamp(wound.InternalBleedingPerDamage, 0f, 1f)
+            : 0f;
+    }
+
     private void OnDamageChanged(Entity<PhysiologyComponent> ent, ref DamageChangedEvent args)
     {
         if (args.DamageDelta == null)
@@ -61,7 +105,15 @@ public sealed class MedicalWoundSystem : EntitySystem
             if (amount > 0 && part is { } hit && hit.Comp2.BleedingPerDamage.TryGetValue(type, out var coefficient))
             {
                 hit.Comp2.Injury.DamageDict[type] = hit.Comp2.Injury.DamageDict.GetValueOrDefault(type) + amount;
-                if (TryComp<BloodstreamComponent>(ent, out var blood))
+                if (!hit.Comp2.Prosthetic && type == "Blunt" && (hit.Comp1.Category?.Id is "ArmLeft" or "ArmRight" or "HandLeft" or "HandRight"
+                        or "LegLeft" or "LegRight" or "FootLeft" or "FootRight")
+                    && float.IsFinite(hit.Comp2.FractureThreshold) && hit.Comp2.FractureThreshold > 0f
+                    && hit.Comp2.Injury.DamageDict[type] >= FixedPoint2.New(hit.Comp2.FractureThreshold))
+                    hit.Comp2.Fractured = true;
+                if (!hit.Comp2.Prosthetic && type == "Piercing" && float.IsFinite(hit.Comp2.VascularThreshold) && hit.Comp2.VascularThreshold > 0f)
+                    hit.Comp2.VascularDamage = Math.Clamp(hit.Comp2.VascularDamage
+                        + Math.Max(0f, amount.Float() - hit.Comp2.VascularThreshold), 0f, 100f);
+                if (!hit.Comp2.Prosthetic && TryComp<BloodstreamComponent>(ent, out var blood))
                     hit.Comp2.Bleeding += Math.Min(Math.Max(0f, blood.MaxBleedAmount - TotalBleeding(ent)),
                         Math.Max(0f, amount.Float() * coefficient));
                 if (TryComp<PhysiologyStateComponent>(ent, out var state))
@@ -93,10 +145,15 @@ public sealed class MedicalWoundSystem : EntitySystem
                 // Upstream healing has no location. Distribute actual repaired damage, not requested healing.
                 var total = FixedPoint2.Zero;
                 foreach (var organ in _body.EnumerateOrgans<MedicalWoundComponent>(ent.Owner))
-                    total += organ.Comp2.Injury.DamageDict.GetValueOrDefault(type);
+                {
+                    if (!organ.Comp2.Prosthetic)
+                        total += organ.Comp2.Injury.DamageDict.GetValueOrDefault(type);
+                }
                 var remaining = FixedPoint2.Min(-amount, total);
                 foreach (var organ in _body.EnumerateOrgans<MedicalWoundComponent>(ent.Owner))
                 {
+                    if (organ.Comp2.Prosthetic)
+                        continue;
                     var injury = organ.Comp2.Injury.DamageDict.GetValueOrDefault(type);
                     if (injury <= 0 || total <= 0)
                         continue;
@@ -113,7 +170,25 @@ public sealed class MedicalWoundSystem : EntitySystem
     private void OnLocalizedDamage(Entity<PhysiologyComponent> ent, ref LocalizedDamageAttemptEvent args)
     {
         if (args.Part == null)
+        {
+            args.Damage = args.Damage.Clone();
+            foreach (var (type, amount) in args.Damage.DamageDict.ToArray())
+            {
+                if (amount >= 0)
+                    continue;
+                var biological = FixedPoint2.Zero;
+                var localized = false;
+                foreach (var organ in _body.EnumerateOrgans<MedicalWoundComponent>(ent.Owner))
+                {
+                    localized |= organ.Comp2.BleedingPerDamage.ContainsKey(type);
+                    if (!organ.Comp2.Prosthetic)
+                        biological += organ.Comp2.Injury.DamageDict.GetValueOrDefault(type);
+                }
+                if (localized)
+                    args.Damage.DamageDict[type] = -FixedPoint2.Min(-amount, biological);
+            }
             return;
+        }
         var part = FindPart(ent, args.Part, "Torso");
         if (part == null)
         {
@@ -124,7 +199,8 @@ public sealed class MedicalWoundSystem : EntitySystem
         foreach (var (type, amount) in args.Damage.DamageDict.ToArray())
         {
             if (amount < 0 && part.Value.Comp2.BleedingPerDamage.ContainsKey(type))
-                args.Damage.DamageDict[type] = -FixedPoint2.Min(-amount, part.Value.Comp2.Injury.DamageDict.GetValueOrDefault(type));
+                args.Damage.DamageDict[type] = part.Value.Comp2.Prosthetic ? FixedPoint2.Zero
+                    : -FixedPoint2.Min(-amount, part.Value.Comp2.Injury.DamageDict.GetValueOrDefault(type));
         }
     }
 
@@ -148,7 +224,7 @@ public sealed class MedicalWoundSystem : EntitySystem
         foreach (var (type, amount) in args.Damage.DamageDict)
         {
             if (amount < 0 && (part.Comp2.BleedingPerDamage.ContainsKey(type)
-                    ? part.Comp2.Injury.DamageDict.GetValueOrDefault(type)
+                    ? part.Comp2.Prosthetic ? FixedPoint2.Zero : part.Comp2.Injury.DamageDict.GetValueOrDefault(type)
                     : _damage.GetAllDamage(ent.Owner).DamageDict.GetValueOrDefault(type)) > 0)
                 args.CanHeal = true;
         }
@@ -189,6 +265,8 @@ public sealed class MedicalWoundSystem : EntitySystem
                 var support = float.IsFinite(part.Comp2.SupportDamage) && part.Comp2.SupportDamage > 0f
                     ? Math.Clamp(1f - part.Comp2.Injury.GetTotal().Float() / part.Comp2.SupportDamage, 0f, 1f)
                     : 0f;
+                if (part.Comp2.Fractured || part.Comp2.Necrotic)
+                    support = 0f;
                 switch (part.Comp1.Category?.Id)
                 {
                     case "LegLeft": leftLeg = Math.Max(leftLeg, support); break;
@@ -313,6 +391,10 @@ public sealed class MedicalWoundSystem : EntitySystem
             part.Comp2.Injury = new DamageSpecifier();
             part.Comp2.Bleeding = 0f;
             part.Comp2.SurgicalAccess = 0;
+            part.Comp2.Fractured = false;
+            part.Comp2.VascularDamage = 0f;
+            part.Comp2.IschemiaDebt = 0f;
+            part.Comp2.Necrotic = false;
             part.Comp2.SurgeryRevision++;
         }
         Synchronize(ent);
@@ -325,6 +407,10 @@ public sealed class MedicalWoundSystem : EntitySystem
         ent.Comp.Injury = new DamageSpecifier();
         ent.Comp.Bleeding = 0f;
         ent.Comp.SurgicalAccess = 0;
+        ent.Comp.Fractured = false;
+        ent.Comp.VascularDamage = 0f;
+        ent.Comp.IschemiaDebt = 0f;
+        ent.Comp.Necrotic = false;
         ent.Comp.SurgeryRevision++;
         if (TryComp<OrganComponent>(ent, out var organ) && organ.Body is { } host && HasComp<PhysiologyComponent>(host))
             Synchronize(host);
@@ -348,6 +434,24 @@ public sealed class MedicalWoundSystem : EntitySystem
     public void ClampSurgicalBleeding(EntityUid patient, MedicalWoundComponent wound)
     {
         wound.Bleeding = 0f;
+        Synchronize(patient);
+    }
+
+    public void RepairFracture(EntityUid patient, MedicalWoundComponent wound)
+    {
+        wound.Fractured = false;
+        Synchronize(patient);
+    }
+
+    public void RepairVessel(MedicalWoundComponent wound)
+    {
+        wound.VascularDamage = 0f;
+    }
+
+    public void RepairProsthetic(EntityUid patient, MedicalWoundComponent wound)
+    {
+        TransferAggregateDamage(patient, -wound.Injury);
+        wound.Injury = new DamageSpecifier();
         Synchronize(patient);
     }
 }

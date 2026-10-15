@@ -121,6 +121,12 @@ public sealed class MedicalSurgerySystem : EntitySystem
                 return wound.SurgicalAccess == 2 && wound.Bleeding <= 0f;
             case MedicalSurgeryAction.Close:
                 return wound.SurgicalAccess > 0 && wound.Bleeding <= 0f;
+            case MedicalSurgeryAction.RepairFracture:
+                return wound.SurgicalAccess == 3 && wound.Bleeding <= 0f && wound.Fractured;
+            case MedicalSurgeryAction.RepairVessel:
+                return wound.SurgicalAccess == 3 && wound.Bleeding <= 0f && wound.VascularDamage > 0f;
+            case MedicalSurgeryAction.RepairProsthetic:
+                return wound.Prosthetic && wound.Injury.GetTotal() > 0;
             case MedicalSurgeryAction.Extract:
                 return wound.SurgicalAccess == 3 && wound.Bleeding <= 0f && ev.Organ is { } extraction
                     && TryComp<OrganComponent>(GetEntity(extraction), out var organ) && organ.Body == patient
@@ -180,6 +186,15 @@ public sealed class MedicalSurgerySystem : EntitySystem
                 break;
             case MedicalSurgeryAction.Close:
                 wound.SurgicalAccess = 0;
+                break;
+            case MedicalSurgeryAction.RepairFracture:
+                _wounds.RepairFracture(ent, wound);
+                break;
+            case MedicalSurgeryAction.RepairVessel:
+                _wounds.RepairVessel(wound);
+                break;
+            case MedicalSurgeryAction.RepairProsthetic:
+                _wounds.RepairProsthetic(ent, wound);
                 break;
             case MedicalSurgeryAction.Extract:
                 var removed = GetEntity(args.Organ!.Value);

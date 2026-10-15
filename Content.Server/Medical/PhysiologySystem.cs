@@ -30,6 +30,7 @@ public sealed class PhysiologySystem : EntitySystem
         base.Initialize();
         UpdatesAfter.Add(typeof(RespiratorSystem));
         UpdatesAfter.Add(typeof(BloodstreamSystem));
+        UpdatesAfter.Add(typeof(MedicalWoundSystem));
         SubscribeLocalEvent<PhysiologyComponent, RejuvenateEvent>(OnRejuvenate);
         SubscribeLocalEvent<CerebralHealthComponent, RejuvenateEvent>(OnBrainRejuvenate);
         SubscribeLocalEvent<MedicalOrganComponent, RejuvenateEvent>(OnOrganRejuvenate);
@@ -141,6 +142,15 @@ public sealed class PhysiologySystem : EntitySystem
         }
         foreach (var part in _body.EnumerateOrgans<MedicalWoundComponent>((uid, body)))
         {
+            if (part.Comp2.Necrotic)
+                result.NecroticParts.Add(part.Comp1.Category?.Id ?? "Unknown");
+            if (part.Comp2.Prosthetic)
+                result.ProstheticParts.Add(part.Comp1.Category?.Id ?? "Unknown");
+            if (part.Comp2.Fractured)
+                result.Fractures.Add(part.Comp1.Category?.Id ?? "Unknown");
+            if (part.Comp2.VascularDamage > 0f)
+                result.VascularInjuries.Add(new VascularInjuryScan(part.Comp1.Category?.Id ?? "Unknown",
+                    part.Comp2.VascularDamage, MedicalWoundSystem.InternalBleeding(part.Comp2)));
             if (part.Comp2.SurgicalAccess > 0)
                 result.SurgicalSites.Add(new SurgicalAccessScan(part.Comp1.Category?.Id ?? "Unknown", part.Comp2.SurgicalAccess));
             if (part.Comp2.Injury.GetTotal() > 0 || part.Comp2.Bleeding > 0f)

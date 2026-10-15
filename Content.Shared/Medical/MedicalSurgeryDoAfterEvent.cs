@@ -12,6 +12,9 @@ public enum MedicalSurgeryAction : byte
     Close,
     Extract,
     Insert,
+    RepairFracture,
+    RepairVessel,
+    RepairProsthetic,
 }
 
 [Serializable, NetSerializable]

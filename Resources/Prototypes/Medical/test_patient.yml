@@ -73,6 +73,38 @@
     action: Extract
 
 - type: entity
+  parent: Hemostat
+  id: MedicalTestBoneSetter
+  name: experimental bone fixation tool
+  suffix: Experimental Physiology
+  description: Restores skeletal support at an exposed fracture on an experimental operating table. Does not repair tissue damage.
+  components:
+  - type: MedicalSurgeryTool
+    action: RepairFracture
+    delay: 8
+
+- type: entity
+  parent: Hemostat
+  id: MedicalTestVascularRepairTool
+  name: experimental vascular repair tool
+  suffix: Experimental Physiology
+  description: Repairs an exposed deep vascular injury. External dressings cannot stop internal blood loss.
+  components:
+  - type: MedicalSurgeryTool
+    action: RepairVessel
+    delay: 8
+
+- type: entity
+  parent: Drill
+  id: MedicalTestProstheticRepairTool
+  name: experimental prosthetic repair tool
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalSurgeryTool
+    action: RepairProsthetic
+    delay: 8
+
+- type: entity
   parent: MobHuman
   id: MobMedicalTestHuman
   name: medical test patient
@@ -188,3 +220,67 @@
   suffix: Experimental Physiology
   components:
   - type: MedicalWound
+
+- type: entity
+  parent: OrganMedicalTestArmLeft
+  id: OrganMedicalTestProstheticArmLeft
+  name: experimental left arm prosthesis
+  components:
+  - type: MedicalWound
+    prosthetic: true
+
+- type: entity
+  parent: OrganMedicalTestArmRight
+  id: OrganMedicalTestProstheticArmRight
+  name: experimental right arm prosthesis
+  components:
+  - type: MedicalWound
+    prosthetic: true
+
+- type: entity
+  parent: OrganMedicalTestHandLeft
+  id: OrganMedicalTestProstheticHandLeft
+  name: experimental left hand prosthesis
+  components:
+  - type: MedicalWound
+    prosthetic: true
+
+- type: entity
+  parent: OrganMedicalTestHandRight
+  id: OrganMedicalTestProstheticHandRight
+  name: experimental right hand prosthesis
+  components:
+  - type: MedicalWound
+    prosthetic: true
+
+- type: entity
+  parent: OrganMedicalTestLegLeft
+  id: OrganMedicalTestProstheticLegLeft
+  name: experimental left leg prosthesis
+  components:
+  - type: MedicalWound
+    prosthetic: true
+
+- type: entity
+  parent: OrganMedicalTestLegRight
+  id: OrganMedicalTestProstheticLegRight
+  name: experimental right leg prosthesis
+  components:
+  - type: MedicalWound
+    prosthetic: true
+
+- type: entity
+  parent: OrganMedicalTestFootLeft
+  id: OrganMedicalTestProstheticFootLeft
+  name: experimental left foot prosthesis
+  components:
+  - type: MedicalWound
+    prosthetic: true
+
+- type: entity
+  parent: OrganMedicalTestFootRight
+  id: OrganMedicalTestProstheticFootRight
+  name: experimental right foot prosthesis
+  components:
+  - type: MedicalWound
+    prosthetic: true
