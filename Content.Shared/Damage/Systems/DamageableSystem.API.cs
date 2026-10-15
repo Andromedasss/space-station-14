@@ -71,12 +71,13 @@ public sealed partial class DamageableSystem
         bool ignoreResistances = false,
         bool interruptsDoAfters = true,
         EntityUid? origin = null,
-        bool ignoreGlobalModifiers = false
+        bool ignoreGlobalModifiers = false,
+        EntityUid? targetPart = null
     )
     {
         //! Empty just checks if the DamageSpecifier is _literally_ empty, as in, is internal dictionary of damage types is empty.
         // If you deal 0.0 of some damage type, Empty will be false!
-        return TryChangeDamage(ent, damage, out _, ignoreResistances, interruptsDoAfters, origin, ignoreGlobalModifiers);
+        return TryChangeDamage(ent, damage, out _, ignoreResistances, interruptsDoAfters, origin, ignoreGlobalModifiers, targetPart);
     }
 
     /// <summary>
@@ -97,12 +98,13 @@ public sealed partial class DamageableSystem
         bool ignoreResistances = false,
         bool interruptsDoAfters = true,
         EntityUid? origin = null,
-        bool ignoreGlobalModifiers = false
+        bool ignoreGlobalModifiers = false,
+        EntityUid? targetPart = null
     )
     {
         //! Empty just checks if the DamageSpecifier is _literally_ empty, as in, is internal dictionary of damage types is empty.
         // If you deal 0.0 of some damage type, Empty will be false!
-        newDamage = ChangeDamage(ent, damage, ignoreResistances, interruptsDoAfters, origin, ignoreGlobalModifiers);
+        newDamage = ChangeDamage(ent, damage, ignoreResistances, interruptsDoAfters, origin, ignoreGlobalModifiers, targetPart);
         return !newDamage.Empty;
     }
 
@@ -159,6 +161,12 @@ public sealed partial class DamageableSystem
 
         if (!ignoreGlobalModifiers)
             damage = ApplyUniversalAllModifiers(damage);
+
+        var localized = new LocalizedDamageAttemptEvent(damage, targetPart);
+        RaiseLocalEvent(ent, ref localized);
+        damage = localized.Damage;
+        if (localized.Cancelled)
+            return damageDone;
 
         var evt = new DamageDealtEvent(damage, origin, interruptsDoAfters, targetPart);
         RaiseLocalEvent(ent, ref evt);

@@ -31,6 +31,7 @@ public sealed partial class HealingSystem : EntitySystem
     [Dependency] private MobThresholdSystem _mobThresholdSystem = default!;
     [Dependency] private SharedPopupSystem _popupSystem = default!;
     [Dependency] private SharedSolutionContainerSystem _solutionContainerSystem = default!;
+    [Dependency] private MedicalTargetingSystem _targeting = default!;
 
     public override void Initialize()
     {
@@ -50,6 +51,14 @@ public sealed partial class HealingSystem : EntitySystem
         if (!TryComp(args.Used, out HealingComponent? healing))
             return;
 
+        EntityUid? targetPart = args.Part is { } netPart ? GetEntity(netPart) : null;
+        if (targetPart is { } part && (!TryComp<Content.Shared.Body.OrganComponent>(part, out var organ)
+                || organ.Body != target.Owner))
+            return;
+
+        if (!HasDamage((args.Used!.Value, healing), target, targetPart))
+            return;
+
         if (!TryComp<InjurableComponent>(target, out var injurable))
             return;
 
@@ -66,7 +75,10 @@ public sealed partial class HealingSystem : EntitySystem
         if (healing.BloodlossModifier != 0 && bloodstream != null)
         {
             var isBleeding = bloodstream.BleedAmount > 0;
-            _bloodstreamSystem.TryModifyBleedAmount((target.Owner, bloodstream), healing.BloodlossModifier);
+            var hemostasis = new LocalizedHemostasisEvent(targetPart, healing.BloodlossModifier);
+            RaiseLocalEvent(target.Owner, ref hemostasis);
+            if (!hemostasis.Handled)
+                _bloodstreamSystem.TryModifyBleedAmount((target.Owner, bloodstream), healing.BloodlossModifier);
             if (isBleeding != bloodstream.BleedAmount > 0)
             {
                 var popup = (args.User == target.Owner)
@@ -80,7 +92,8 @@ public sealed partial class HealingSystem : EntitySystem
         if (healing.ModifyBloodLevel != 0 && bloodstream != null)
             _bloodstreamSystem.TryModifyBloodLevel((target.Owner, bloodstream), healing.ModifyBloodLevel);
 
-        if (!_damageable.TryChangeDamage(target.Owner, healing.Damage * _damageable.UniversalTopicalsHealModifier, out var healed, true, origin: args.Args.User) && healing.BloodlossModifier != 0)
+        if (!_damageable.TryChangeDamage(target.Owner, healing.Damage * _damageable.UniversalTopicalsHealModifier, out var healed, true,
+                origin: args.Args.User, targetPart: targetPart) && healing.BloodlossModifier != 0)
             return;
 
         var total = healed.GetTotal();
@@ -113,7 +126,7 @@ public sealed partial class HealingSystem : EntitySystem
         _audio.PlayPredicted(healing.HealingEndSound, target.Owner, args.User);
 
         // Logic to determine the whether or not to repeat the healing action
-        args.Repeat = HasDamage((args.Used.Value, healing), target) && !dontRepeat;
+        args.Repeat = HasDamage((args.Used.Value, healing), target, targetPart) && !dontRepeat;
         args.Handled = true;
 
         if (!args.Repeat)
@@ -127,8 +140,21 @@ public sealed partial class HealingSystem : EntitySystem
             args.Args.Delay = healing.Delay * GetScaledHealingPenalty(target.Owner, healing.SelfHealPenaltyMultiplier);
     }
 
-    private bool HasDamage(Entity<HealingComponent> healing, Entity<DamageableComponent> target)
+    private bool HasDamage(Entity<HealingComponent> healing, Entity<DamageableComponent> target, EntityUid? part = null)
     {
+        if (part is { } site)
+        {
+            var query = new LocalizedHealingQueryEvent(site, healing.Comp.Damage, healing.Comp.BloodlossModifier);
+            RaiseLocalEvent(target.Owner, ref query);
+            if (query.Handled)
+            {
+                if (query.CanHeal)
+                    return true;
+                return healing.Comp.ModifyBloodLevel > 0f
+                    && TryComp<BloodstreamComponent>(target, out var blood)
+                    && _bloodstreamSystem.GetBloodLevel((target, blood)) < 1f;
+            }
+        }
         var damageableDict = _damageable.GetAllDamage(target.AsNullable()).DamageDict;
         var healingDict = healing.Comp.Damage.DamageDict;
         foreach (var type in healingDict)
@@ -198,7 +224,11 @@ public sealed partial class HealingSystem : EntitySystem
         if (TryComp<StackComponent>(healing, out var stack) && stack.Count < 1)
             return false;
 
-        if (!HasDamage(healing, target!))
+        var selectedPart = _targeting.SelectedPart(user, target);
+        if (HasComp<PhysiologyComponent>(target) && selectedPart == null)
+            return false;
+
+        if (!HasDamage(healing, target!, selectedPart))
         {
             _popupSystem.PopupEntity(Loc.GetString("medical-item-cant-use", ("item", healing.Owner)), healing, user);
             return false;
@@ -219,7 +249,10 @@ public sealed partial class HealingSystem : EntitySystem
             : healing.Comp.Delay * GetScaledHealingPenalty(target, healing.Comp.SelfHealPenaltyMultiplier);
 
         var doAfterEventArgs =
-            new DoAfterArgs(EntityManager, user, delay, new HealingDoAfterEvent(), target, target: target, used: healing)
+            new DoAfterArgs(EntityManager, user, delay, new HealingDoAfterEvent
+            {
+                Part = selectedPart is { } part ? GetNetEntity(part) : null,
+            }, target, target: target, used: healing)
             {
                 // Didn't break on damage as they may be trying to prevent it and
                 // not being able to heal your own ticking damage would be frustrating.

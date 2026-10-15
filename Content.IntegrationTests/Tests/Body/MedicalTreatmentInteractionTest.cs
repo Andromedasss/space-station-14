@@ -19,6 +19,141 @@ namespace Content.IntegrationTests.Tests.Body;
 
 public sealed class MedicalTreatmentInteractionTest : InteractionTest
 {
+    private async Task SelectZone(string category)
+    {
+        await Client.WaitPost(() => CEntMan.System<Content.Client.Verbs.VerbSystem>()
+            .ExecuteVerb(Target!.Value, new Verb { Text = $"Target zone: {category}" }));
+        await RunTicks(10);
+        await Client.WaitAssertion(() => Assert.That(CEntMan.GetComponent<MedicalTargetingComponent>(CPlayer).Category,
+            Is.EqualTo(category)));
+    }
+
+    [Test]
+    public async Task DefaultDressingCannotTreatDistantWounds()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        await Server.WaitPost(() => SEntMan.System<MedicalWoundSystem>().TryInjure(STarget!.Value, "LegLeft", "Slash", 20f));
+        var gauze = await PlaceInHands("Gauze", 10);
+        await Interact(awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.Zero);
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(gauze)).Count, Is.EqualTo(10));
+            var leg = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value)
+                .Single(p => p.Comp1.Category?.Id == "LegLeft");
+            Assert.That(leg.Comp2.Injury.GetTotal().Float(), Is.EqualTo(20f));
+            Assert.That(leg.Comp2.Bleeding, Is.GreaterThan(0f));
+        });
+    }
+
+    [Test]
+    public async Task ZoneSelectionDoesNotChangeOrdinaryPatientHealing()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        await SelectZone("LegLeft");
+        await SpawnTarget("MobHuman");
+        await Server.WaitPost(() => SEntMan.System<Content.Shared.Damage.Systems.DamageableSystem>()
+            .TryChangeDamage(STarget!.Value, new Content.Shared.Damage.DamageSpecifier
+            {
+                DamageDict = { ["Slash"] = Content.Shared.FixedPoint.FixedPoint2.New(10) },
+            }, true));
+        await InteractUsing("Gauze", 10);
+        await Server.WaitAssertion(() => Assert.That(SEntMan.System<Content.Shared.Damage.Systems.DamageableSystem>()
+            .GetAllDamage(STarget!.Value).DamageDict["Slash"], Is.EqualTo(Content.Shared.FixedPoint.FixedPoint2.Zero)));
+    }
+
+    [Test]
+    public async Task SelectedBloodpackStillRepairsSystemicBloodloss()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        await SelectZone("ArmLeft");
+        await Server.WaitPost(() => SEntMan.System<Content.Shared.Damage.Systems.DamageableSystem>()
+            .TryChangeDamage(STarget!.Value, new Content.Shared.Damage.DamageSpecifier
+            {
+                DamageDict = { ["Bloodloss"] = Content.Shared.FixedPoint.FixedPoint2.New(1) },
+            }, true));
+        await InteractUsing("Bloodpack", 10);
+        await Server.WaitAssertion(() => Assert.That(SEntMan.System<Content.Shared.Damage.Systems.DamageableSystem>()
+            .GetAllDamage(STarget!.Value).DamageDict["Bloodloss"], Is.EqualTo(Content.Shared.FixedPoint.FixedPoint2.Zero)));
+    }
+
+    [Test]
+    public async Task SelectedLightAttackInjuresOnlyChosenPhysicalPart()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        await SelectZone("ArmLeft");
+        await PlaceInHands("Crowbar");
+        await RunSeconds(2);
+        await AttemptLightAttack();
+        await RunTicks(10);
+        await Server.WaitAssertion(() =>
+        {
+            var parts = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value).ToArray();
+            Assert.That(parts.Single(p => p.Comp1.Category?.Id == "ArmLeft").Comp2.Injury.GetTotal().Float(), Is.GreaterThan(0f));
+            Assert.That(parts.Where(p => p.Comp1.Category?.Id != "ArmLeft").All(p => p.Comp2.Injury.Empty), Is.True);
+        });
+    }
+
+    [Test]
+    public async Task RemovingDressingSiteDoesNotTreatAnotherPartOrConsumeSupplies()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        await Server.WaitPost(() => SEntMan.System<MedicalWoundSystem>().TryInjure(STarget!.Value, "LegLeft", "Slash", 20f));
+        await SelectZone("LegLeft");
+        var gauze = await PlaceInHands("Gauze", 10);
+        await Interact(awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.EqualTo(1));
+        await Server.WaitPost(() =>
+        {
+            var leg = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value)
+                .Single(p => p.Comp1.Category?.Id == "LegLeft");
+            var containers = SEntMan.System<SharedContainerSystem>();
+            containers.Remove(leg.Owner, containers.GetContainer(STarget!.Value, BodyComponent.ContainerID));
+        });
+        await RunTicks(180);
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(gauze)).Count, Is.EqualTo(10));
+            var torso = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value)
+                .Single(p => p.Comp1.Category?.Id == "Torso");
+            Assert.That(torso.Comp2.Injury.GetTotal().Float(), Is.InRange(19.8f, 20f));
+            Assert.That(torso.Comp2.Bleeding, Is.GreaterThan(0f));
+        });
+    }
+
+    [Test]
+    public async Task SelectedDressingKeepsPhysicalSiteAndDoesNotHealOtherWounds()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        await Server.WaitPost(() =>
+        {
+            var wounds = SEntMan.System<MedicalWoundSystem>();
+            wounds.TryInjure(STarget!.Value, "LegLeft", "Slash", 2f);
+            wounds.TryInjure(STarget!.Value, "ArmRight", "Slash", 20f);
+        });
+        await SelectZone("LegLeft");
+        var gauze = await PlaceInHands("Gauze", 10);
+        await Interact(awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.EqualTo(1));
+        await SelectZone("ArmRight");
+        await AwaitDoAfters();
+        await Server.WaitAssertion(() =>
+        {
+            var parts = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value).ToArray();
+            Assert.That(parts.Single(p => p.Comp1.Category?.Id == "LegLeft").Comp2.Injury.GetTotal().Float(), Is.Zero);
+            Assert.That(parts.Single(p => p.Comp1.Category?.Id == "LegLeft").Comp2.Bleeding, Is.Zero);
+            Assert.That(parts.Single(p => p.Comp1.Category?.Id == "ArmRight").Comp2.Injury.GetTotal().Float(), Is.EqualTo(20f));
+            Assert.That(parts.Single(p => p.Comp1.Category?.Id == "ArmRight").Comp2.Bleeding, Is.GreaterThan(0f));
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(gauze)).Count, Is.EqualTo(9));
+        });
+    }
+
     private async Task SurgeryStep(string tool, string action, string part = "Torso", string organ = "")
     {
         await PlaceInHands(tool);
@@ -307,7 +442,6 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
                 Does.Contain("92%"));
             var patient = CEntMan.GetEntity(Target!.Value);
             Assert.That(CEntMan.GetComponent<PhysiologyComponent>(patient).Mobility, Is.EqualTo(0.92f).Within(0.001f));
-            CEntMan.System<MovementSpeedModifierSystem>().RefreshMovementSpeedModifiers(patient);
             Assert.That(CEntMan.GetComponent<MovementSpeedModifierComponent>(patient).WalkSpeedModifier,
                 Is.EqualTo(0.92f).Within(0.001f));
         });
@@ -322,6 +456,7 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         {
             Assert.That(SEntMan.System<MedicalWoundSystem>().TryInjure(STarget!.Value, "LegLeft", "Slash", 20f), Is.True);
         });
+        await SelectZone("LegLeft");
         await InteractUsing("Gauze", 10, awaitDoAfters: false);
         await CancelDoAfters();
         await Server.WaitAssertion(() =>
@@ -370,6 +505,7 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
             await RunTicks(5400);
             await Server.WaitAssertion(() => Assert.That(SEntMan.System<MobStateSystem>().IsDead(STarget!.Value), Is.True));
         }
+        await SelectZone("LegLeft");
         await InteractUsing("Gauze", 10);
         await InteractUsing("Bloodpack", 10);
         if (delayedTreatment)
@@ -403,6 +539,7 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
             physiology.Update(31f);
             Assert.That(SEntMan.System<MobStateSystem>().IsCritical(patient), Is.True);
         });
+        await SelectZone("LegLeft");
         await InteractUsing("Gauze", 10);
         await InteractUsing("Bloodpack", 10);
         await RunTicks(300);

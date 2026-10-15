@@ -10,6 +10,9 @@ using Content.Shared.Body.Systems;
 using Content.Shared.Damage;
 using Content.Shared.Damage.Systems;
 using Content.Shared.FixedPoint;
+using Content.Shared.ActionBlocker;
+using Content.Shared.Hands.Components;
+using Content.Shared.Hands.EntitySystems;
 using Content.Shared.DoAfter;
 using Content.Shared.Medical;
 using Content.Shared.Mobs.Systems;
@@ -24,6 +27,67 @@ namespace Content.IntegrationTests.Tests.Body;
 [TestOf(typeof(MedicalWoundSystem))]
 public sealed class MedicalWoundTest : GameTest
 {
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void LocalHealingCannotRepairAnotherPartOrUseForeignTissue()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var donor = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var wounds = SEntMan.System<MedicalWoundSystem>();
+        var damage = SEntMan.System<DamageableSystem>();
+        wounds.TryInjure(patient, "LegLeft", "Slash", 2f);
+        wounds.TryInjure(patient, "ArmRight", "Slash", 10f);
+        var leg = body.EnumerateOrgans<MedicalWoundComponent>(patient).Single(p => p.Comp1.Category?.Id == "LegLeft");
+        var arm = body.EnumerateOrgans<MedicalWoundComponent>(patient).Single(p => p.Comp1.Category?.Id == "ArmRight");
+        var foreign = body.EnumerateOrgans<MedicalWoundComponent>(donor).First();
+        var repair = new DamageSpecifier { DamageDict = { ["Slash"] = FixedPoint2.New(-50) } };
+        damage.TryChangeDamage(patient, repair, true, targetPart: leg.Owner);
+        Assert.That(leg.Comp2.Injury.GetTotal(), Is.EqualTo(FixedPoint2.Zero));
+        Assert.That(arm.Comp2.Injury.GetTotal(), Is.EqualTo(FixedPoint2.New(10)));
+        Assert.That(damage.GetAllDamage(patient).DamageDict["Slash"], Is.EqualTo(FixedPoint2.New(10)));
+        Assert.That(damage.TryChangeDamage(patient, repair, true, targetPart: foreign.Owner), Is.False);
+        Assert.That(damage.GetAllDamage(patient).DamageDict["Slash"], Is.EqualTo(FixedPoint2.New(10)));
+    }
+
+    [Test]
+    public async Task DestroyedArmBlocksOnlyItsHandAndRepairRestoresUse()
+    {
+        var map = await Pair.CreateTestMap();
+        await Server.WaitAssertion(() =>
+        {
+            var patient = SSpawnAtPosition("MobMedicalTestHuman", map.GridCoords);
+            var hands = SEntMan.System<SharedHandsSystem>();
+            var medical = SEntMan.System<MedicalHandSystem>();
+            var blocker = SEntMan.System<ActionBlockerSystem>();
+            var left = hands.EnumerateHands(patient).Single(id => hands.TryGetHand(patient, id, out var hand)
+                && hand.Value.Location == HandLocation.Left);
+            var right = hands.EnumerateHands(patient).Single(id => hands.TryGetHand(patient, id, out var hand)
+                && hand.Value.Location == HandLocation.Right);
+            hands.TrySetActiveHand(patient, left);
+            var item = SSpawn("Gauze");
+            Assert.That(hands.TryPickup(patient, item, left), Is.True);
+            SEntMan.System<MedicalWoundSystem>().TryInjure(patient, "ArmLeft", "Blunt", 100f);
+            Assert.That(SComp<PhysiologyComponent>(patient).LeftHandFunction, Is.Zero);
+            Assert.That(hands.GetHeldItem(patient, left), Is.Null);
+            Assert.That(hands.CanPickupToHand(patient, item, left), Is.False);
+            Assert.That(blocker.CanAttack(patient), Is.False);
+            Assert.That(medical.CanUseHand(patient, right), Is.True);
+            hands.TrySetActiveHand(patient, right);
+            Assert.That(blocker.CanAttack(patient), Is.True);
+            Assert.That(hands.TryPickup(patient, item, right), Is.True);
+            SEntMan.System<RejuvenateSystem>().PerformRejuvenate(patient);
+            Assert.That(medical.CanUseHand(patient, left), Is.True);
+            var handPart = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(patient)
+                .Single(p => p.Comp1.Category?.Id == "HandLeft");
+            var containers = SEntMan.System<SharedContainerSystem>();
+            containers.Remove(handPart.Owner, containers.GetContainer(patient, BodyComponent.ContainerID));
+            Assert.That(SComp<PhysiologyComponent>(patient).LeftHandFunction, Is.Zero);
+            Assert.That(medical.CanUseHand(patient, left), Is.False);
+        });
+        await Server.WaitPost(() => SEntMan.DeleteEntity(map.MapUid));
+    }
+
     [Test]
     [RunOnSide(Side.Server)]
     public void LocalSupportInjurySlowsMovementAndTissueRepairRestoresIt()

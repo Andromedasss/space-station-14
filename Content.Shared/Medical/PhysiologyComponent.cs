@@ -6,7 +6,7 @@ namespace Content.Shared.Medical;
 /// Opts a test patient into server-authoritative physiology instead of damage thresholds.
 /// Not intended for arbitrary mobs: the patient must have a bloodstream, respirator and medical organs.
 /// </summary>
-[RegisterComponent, NetworkedComponent, AutoGenerateComponentState]
+[RegisterComponent, NetworkedComponent, AutoGenerateComponentState(true)]
 public sealed partial class PhysiologyComponent : Component
 {
     /// <summary>
@@ -15,4 +15,10 @@ public sealed partial class PhysiologyComponent : Component
     /// </summary>
     [DataField, AutoNetworkedField]
     public float Mobility = 1f;
+
+    [DataField, AutoNetworkedField]
+    public float LeftHandFunction = 1f;
+
+    [DataField, AutoNetworkedField]
+    public float RightHandFunction = 1f;
 }

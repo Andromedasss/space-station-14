@@ -38,3 +38,4 @@ medical-internal-treatment-complete = Internal trauma repaired. Rescan the patie
 medical-surgery-step = Surgery: {$action} {$part} {$organ}
 medical-surgery-complete = Surgical step completed: {$action}.
 medical-surgery-access = {$part}: surgical access {$stage}/3 (1 incised, 2 clamped, 3 exposed). Close after surgery.
+medical-target-zone = Target zone: {$part}

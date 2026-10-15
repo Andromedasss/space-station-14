@@ -1,3 +1,4 @@
+using System.Linq;
 using Content.Shared.Body;
 using Content.Shared.Body.Components;
 using Content.Shared.Body.Events;
@@ -6,6 +7,7 @@ using Content.Shared.Damage;
 using Content.Shared.Damage.Prototypes;
 using Content.Shared.Damage.Systems;
 using Content.Shared.FixedPoint;
+using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Medical;
 using Content.Shared.Movement.Systems;
 using Content.Shared.Rejuvenate;
@@ -25,11 +27,16 @@ public sealed class MedicalWoundSystem : EntitySystem
     [Dependency] private PhysiologySystem _physiology = default!;
     [Dependency] private OrganRelationSystem _relations = default!;
     [Dependency] private MovementSpeedModifierSystem _movement = default!;
+    [Dependency] private SharedHandsSystem _hands = default!;
+    [Dependency] private MedicalHandSystem _medicalHands = default!;
 
     public override void Initialize()
     {
         base.Initialize();
         SubscribeLocalEvent<PhysiologyComponent, DamageChangedEvent>(OnDamageChanged);
+        SubscribeLocalEvent<PhysiologyComponent, LocalizedDamageAttemptEvent>(OnLocalizedDamage);
+        SubscribeLocalEvent<PhysiologyComponent, LocalizedHemostasisEvent>(OnLocalizedHemostasis);
+        SubscribeLocalEvent<PhysiologyComponent, LocalizedHealingQueryEvent>(OnHealingQuery);
         SubscribeLocalEvent<PhysiologyComponent, BleedAmountChangedEvent>(OnBleedChanged);
         SubscribeLocalEvent<PhysiologyComponent, OrganInsertedIntoEvent>(OnInserted);
         SubscribeLocalEvent<PhysiologyComponent, OrganRemovedFromEvent>(OnRemoved);
@@ -77,6 +84,12 @@ public sealed class MedicalWoundSystem : EntitySystem
             }
             else if (amount < 0)
             {
+                if (args.TargetPart != null && part is { } healed)
+                {
+                    var injury = healed.Comp2.Injury.DamageDict.GetValueOrDefault(type);
+                    healed.Comp2.Injury.DamageDict[type] = FixedPoint2.Max(FixedPoint2.Zero, injury + amount);
+                    continue;
+                }
                 // Upstream healing has no location. Distribute actual repaired damage, not requested healing.
                 var total = FixedPoint2.Zero;
                 foreach (var organ in _body.EnumerateOrgans<MedicalWoundComponent>(ent.Owner))
@@ -95,6 +108,50 @@ public sealed class MedicalWoundSystem : EntitySystem
             }
         }
         Synchronize(ent);
+    }
+
+    private void OnLocalizedDamage(Entity<PhysiologyComponent> ent, ref LocalizedDamageAttemptEvent args)
+    {
+        if (args.Part == null)
+            return;
+        var part = FindPart(ent, args.Part, "Torso");
+        if (part == null)
+        {
+            args.Cancelled = true;
+            return;
+        }
+        args.Damage = args.Damage.Clone();
+        foreach (var (type, amount) in args.Damage.DamageDict.ToArray())
+        {
+            if (amount < 0 && part.Value.Comp2.BleedingPerDamage.ContainsKey(type))
+                args.Damage.DamageDict[type] = -FixedPoint2.Min(-amount, part.Value.Comp2.Injury.DamageDict.GetValueOrDefault(type));
+        }
+    }
+
+    private void OnLocalizedHemostasis(Entity<PhysiologyComponent> ent, ref LocalizedHemostasisEvent args)
+    {
+        if (args.Part == null)
+            return;
+        args.Handled = true;
+        if (FindPart(ent, args.Part, "Torso") is not { } part)
+            return;
+        part.Comp2.Bleeding = Math.Max(0f, part.Comp2.Bleeding + args.Amount);
+        Synchronize(ent);
+    }
+
+    private void OnHealingQuery(Entity<PhysiologyComponent> ent, ref LocalizedHealingQueryEvent args)
+    {
+        args.Handled = true;
+        if (FindPart(ent, args.Part, "Torso") is not { } part)
+            return;
+        args.CanHeal = args.BleedingModifier < 0f && part.Comp2.Bleeding > 0f;
+        foreach (var (type, amount) in args.Damage.DamageDict)
+        {
+            if (amount < 0 && (part.Comp2.BleedingPerDamage.ContainsKey(type)
+                    ? part.Comp2.Injury.DamageDict.GetValueOrDefault(type)
+                    : _damage.GetAllDamage(ent.Owner).DamageDict.GetValueOrDefault(type)) > 0)
+                args.CanHeal = true;
+        }
     }
 
     private Entity<OrganComponent, MedicalWoundComponent>? FindPart(EntityUid uid, EntityUid? target, string category)
@@ -123,6 +180,10 @@ public sealed class MedicalWoundSystem : EntitySystem
             var rightLeg = 0f;
             var leftFoot = 0f;
             var rightFoot = 0f;
+            var leftArm = 0f;
+            var rightArm = 0f;
+            var leftHand = 0f;
+            var rightHand = 0f;
             foreach (var part in _body.EnumerateOrgans<MedicalWoundComponent>(uid))
             {
                 var support = float.IsFinite(part.Comp2.SupportDamage) && part.Comp2.SupportDamage > 0f
@@ -134,6 +195,10 @@ public sealed class MedicalWoundSystem : EntitySystem
                     case "LegRight": rightLeg = Math.Max(rightLeg, support); break;
                     case "FootLeft": leftFoot = Math.Max(leftFoot, support); break;
                     case "FootRight": rightFoot = Math.Max(rightFoot, support); break;
+                    case "ArmLeft": leftArm = Math.Max(leftArm, support); break;
+                    case "ArmRight": rightArm = Math.Max(rightArm, support); break;
+                    case "HandLeft": leftHand = Math.Max(leftHand, support); break;
+                    case "HandRight": rightHand = Math.Max(rightHand, support); break;
                 }
             }
 
@@ -145,6 +210,19 @@ public sealed class MedicalWoundSystem : EntitySystem
                 Dirty(uid, physiology);
             }
             _movement.RefreshMovementSpeedModifiers(uid);
+            var left = Math.Min(leftArm, leftHand);
+            var right = Math.Min(rightArm, rightHand);
+            if (physiology.LeftHandFunction != left || physiology.RightHandFunction != right)
+            {
+                physiology.LeftHandFunction = left;
+                physiology.RightHandFunction = right;
+                Dirty(uid, physiology);
+                foreach (var id in _hands.EnumerateHands(uid))
+                {
+                    if (!_medicalHands.CanUseHand(uid, id))
+                        _hands.TryDrop(uid, id, checkActionBlocker: false);
+                }
+            }
         }
 
         if (!TryComp<BloodstreamComponent>(uid, out var blood))
