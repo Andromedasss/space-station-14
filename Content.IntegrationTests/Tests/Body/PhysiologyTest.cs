@@ -178,4 +178,25 @@ public sealed class PhysiologyTest : GameTest
         Assert.That(brain.OxygenDebt, Is.EqualTo(40f));
         Assert.That(SComp<CerebralHealthComponent>(detached).OxygenDebt, Is.EqualTo(40f));
     }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void HealthAnalyzerReportsExperimentalPhysiologyWithoutChangingUpstreamScans()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var analyzer = SEntMan.System<HealthAnalyzerSystem>();
+        var physiology = SEntMan.System<PhysiologySystem>();
+        SEntMan.System<MedicalWoundSystem>().TryInjure(patient, "LegLeft", "Slash", 20f);
+        physiology.TryIntervene(patient, "heart", 0f);
+        physiology.Update(16f);
+        var scan = analyzer.GetHealthAnalyzerUiState(patient);
+        Assert.That(scan.Physiology, Is.Not.Null);
+        Assert.That(scan.Physiology!.HeartFunction, Is.Zero);
+        Assert.That(scan.Physiology.OxygenDebt, Is.EqualTo(16f));
+        Assert.That(scan.Physiology.Injuries.Single().Category, Is.EqualTo("LegLeft"));
+        Assert.That(scan.Physiology.Injuries.Single().Bleeding, Is.EqualTo(4f).Within(0.001f));
+        Assert.That(analyzer.GetHealthAnalyzerUiState(SSpawn("MobHuman")).Physiology, Is.Null);
+        physiology.Update(140f);
+        Assert.That(analyzer.GetHealthAnalyzerUiState(patient).Physiology!.BrainDamage, Is.EqualTo(100f));
+    }
 }

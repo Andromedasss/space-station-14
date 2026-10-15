@@ -28,6 +28,7 @@ public struct HealthAnalyzerUiState
     public bool? ScanMode;
     public bool? Bleeding;
     public bool? Unrevivable;
+    public PhysiologyScan? Physiology;
 
     public HealthAnalyzerUiState() {}
 

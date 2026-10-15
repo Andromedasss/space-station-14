@@ -23,3 +23,11 @@ health-analyzer-window-scan-mode-active = Active
 health-analyzer-window-scan-mode-inactive = Inactive
 
 health-analyzer-popup-scan-target = {CAPITALIZE(THE($user))} is trying to scan you!
+
+health-analyzer-physiology-title = Experimental physiology (game units)
+health-analyzer-physiology-organs = Heart: {$heart}% / Lungs: {$lungs}%
+health-analyzer-physiology-delivery = Oxygen delivery: {$delivery}% (not SpO2)
+health-analyzer-physiology-brain = Brain: oxygen debt {$debt}s / injury {$damage}/100
+health-analyzer-physiology-brain-missing = Brain absent. Transplant required.
+health-analyzer-physiology-brain-dead = Irreversible brain death. Restoring circulation cannot revive.
+health-analyzer-physiology-injury = {$part}: injury {$damage} / bleeding {$bleeding} per tick

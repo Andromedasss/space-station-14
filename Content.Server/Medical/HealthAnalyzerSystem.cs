@@ -249,7 +249,7 @@ public sealed partial class HealthAnalyzerSystem : EntitySystem
         if (TryComp<UnrevivableComponent>(entity, out var unrevivableComp) && unrevivableComp.Analyzable)
             unrevivable = true;
 
-        return new HealthAnalyzerUiState(
+        var result = new HealthAnalyzerUiState(
             GetNetEntity(entity),
             bodyTemperature,
             bloodAmount,
@@ -257,5 +257,7 @@ public sealed partial class HealthAnalyzerSystem : EntitySystem
             bleeding,
             unrevivable
         );
+        result.Physiology = EntityManager.System<PhysiologySystem>().Scan(entity);
+        return result;
     }
 }

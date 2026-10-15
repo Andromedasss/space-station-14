@@ -5,6 +5,7 @@ using Content.Shared.Body;
 using Content.Shared.Body.Components;
 using Content.Shared.Body.Systems;
 using Content.Shared.Medical;
+using Content.Shared.MedicalScanner;
 using Content.Shared.Mobs;
 using Content.Shared.Mobs.Components;
 using Content.Shared.Mobs.Systems;
@@ -113,6 +114,36 @@ public sealed class PhysiologySystem : EntitySystem
             : state.RespiratorySupply == 0f ? "Respiratory reserve exhausted"
             : state.BloodFraction < PhysiologyModel.AdequateDelivery ? "Insufficient usable blood"
             : "Combined reduction of blood and organ function";
+    }
+
+    public PhysiologyScan? Scan(EntityUid uid)
+    {
+        if (!HasComp<PhysiologyComponent>(uid) || !TryComp<BodyComponent>(uid, out var body)
+            || !TryComp<PhysiologyStateComponent>(uid, out var state))
+            return null;
+
+        Sample(uid, body, state);
+        var result = new PhysiologyScan
+        {
+            HeartFunction = state.HeartFunction,
+            LungFunction = state.LungFunction,
+            OxygenDelivery = state.OxygenDelivery,
+            BrainMissing = true,
+        };
+        foreach (var organ in _body.EnumerateOrgans<CerebralHealthComponent>((uid, body)))
+        {
+            result.BrainMissing = false;
+            result.OxygenDebt = organ.Comp2.OxygenDebt;
+            result.BrainDamage = organ.Comp2.Damage;
+            break;
+        }
+        foreach (var part in _body.EnumerateOrgans<MedicalWoundComponent>((uid, body)))
+        {
+            if (part.Comp2.Injury.GetTotal() > 0 || part.Comp2.Bleeding > 0f)
+                result.Injuries.Add(new LocalizedInjuryScan(part.Comp1.Category?.Id ?? "Unknown",
+                    part.Comp2.Injury.GetTotal().Float(), part.Comp2.Bleeding));
+        }
+        return result;
     }
 
     public string Inspect(EntityUid uid)
