@@ -1,6 +1,8 @@
 using System.Linq;
 using Content.IntegrationTests.Fixtures;
 using Content.IntegrationTests.Fixtures.Attributes;
+using Content.Server.Body.Components;
+using Content.Server.Body.Systems;
 using Content.Server.Medical;
 using Content.Shared.Administration.Systems;
 using Content.Shared.Body;
@@ -11,6 +13,7 @@ using Content.Shared.FixedPoint;
 using Content.Shared.Mobs;
 using Content.Shared.Mobs.Systems;
 using Robust.Shared.Containers;
+using Robust.Shared.GameObjects;
 
 namespace Content.IntegrationTests.Tests.Body;
 
@@ -93,5 +96,86 @@ public sealed class PhysiologyTest : GameTest
         Assert.That(physiology.TryIntervene(recipient, "heart", -1f), Is.False);
         Assert.That(physiology.TryIntervene(recipient, "blood", 0.25f), Is.True);
         Assert.That(physiology.Inspect(recipient), Does.Contain("Insufficient usable blood"));
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void ExternalStateChangesMustMatchBrainHealth()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var mob = SEntMan.System<MobStateSystem>();
+        var physiology = SEntMan.System<PhysiologySystem>();
+
+        mob.ChangeMobState(patient, MobState.Dead);
+        Assert.That(mob.IsAlive(patient), Is.True);
+        mob.ChangeMobState(patient, MobState.Critical);
+        Assert.That(mob.IsAlive(patient), Is.True);
+
+        Assert.That(physiology.TryIntervene(patient, "heart", 0f), Is.True);
+        physiology.Update(16f);
+        mob.ChangeMobState(patient, MobState.Alive);
+        Assert.That(mob.IsCritical(patient), Is.True);
+        mob.ChangeMobState(patient, MobState.Dead);
+        Assert.That(mob.IsCritical(patient), Is.True);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void UnconsciousExperimentalPatientsCanBreatheButDeadPatientsCannot()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var physiology = SEntMan.System<PhysiologySystem>();
+        var respirator = SEntMan.System<RespiratorSystem>();
+        var reserve = SComp<RespiratorComponent>(patient);
+        Assert.That(reserve.Saturation, Is.GreaterThan(reserve.SuffocationThreshold));
+        Assert.That(physiology.TryIntervene(patient, "heart", 0f), Is.True);
+        physiology.Update(16f);
+        Assert.That(respirator.IsBreathing(patient), Is.True);
+        physiology.Update(140f);
+        Assert.That(respirator.IsBreathing(patient), Is.False);
+
+        var upstream = SSpawn("MobHuman");
+        SEntMan.System<MobStateSystem>().ChangeMobState(upstream, MobState.Critical);
+        Assert.That(respirator.IsBreathing(upstream), Is.False);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void UnsupportedTransplantDoesNotFreezeBrainHypoxia()
+    {
+        var donor = SSpawn("MobMedicalTestHuman");
+        var recipient = SSpawn("MobHuman");
+        var body = SEntMan.System<BodySystem>();
+        var brain = body.EnumerateOrgans<CerebralHealthComponent>(donor).Single();
+        var containers = SEntMan.System<SharedContainerSystem>();
+        containers.Remove(brain.Owner, containers.GetContainer(donor, BodyComponent.ContainerID));
+        containers.Insert(brain.Owner, containers.GetContainer(recipient, BodyComponent.ContainerID));
+
+        SEntMan.System<PhysiologySystem>().Update(40f);
+        Assert.That(brain.Comp2.OxygenDebt, Is.EqualTo(40f));
+        Assert.That(brain.Comp2.Damage, Is.EqualTo(10f));
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void PausedPatientsAndDetachedBrainsDoNotAccumulateHypoxia()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var detached = SSpawn("OrganMedicalTestBrain");
+        var physiology = SEntMan.System<PhysiologySystem>();
+        var brain = SEntMan.System<BodySystem>().EnumerateOrgans<CerebralHealthComponent>(patient).Single().Comp2;
+        var metadata = SEntMan.System<MetaDataSystem>();
+        Assert.That(physiology.TryIntervene(patient, "heart", 0f), Is.True);
+        metadata.SetEntityPaused(patient, true);
+        metadata.SetEntityPaused(detached, true);
+        physiology.Update(40f);
+        Assert.That(brain.OxygenDebt, Is.Zero);
+        Assert.That(SComp<CerebralHealthComponent>(detached).OxygenDebt, Is.Zero);
+
+        metadata.SetEntityPaused(patient, false);
+        metadata.SetEntityPaused(detached, false);
+        physiology.Update(40f);
+        Assert.That(brain.OxygenDebt, Is.EqualTo(40f));
+        Assert.That(SComp<CerebralHealthComponent>(detached).OxygenDebt, Is.EqualTo(40f));
     }
 }

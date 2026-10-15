@@ -185,11 +185,12 @@ public sealed partial class RespiratorSystem : EntitySystem
     }
 
     /// <summary>
-    /// Returns true if the entity is above their SuffocationThreshold and alive.
+    /// Returns true if the entity has respiratory reserve and can breathe in its current mob state.
     /// </summary>
     public bool IsBreathing(Entity<RespiratorComponent?> ent)
     {
-        if (_mobState.IsIncapacitated(ent))
+        if (_mobState.IsDead(ent)
+            || (_mobState.IsIncapacitated(ent) && !HasComp<PhysiologyComponent>(ent.Owner)))
             return false;
 
         if (!Resolve(ent, ref ent.Comp))

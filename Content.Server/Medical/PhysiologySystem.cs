@@ -41,11 +41,13 @@ public sealed class PhysiologySystem : EntitySystem
         while (query.MoveNext(out var uid, out _, out var state, out var body, out _))
             Simulate(uid, body, state, frameTime);
 
-        // Removed brains do not get free preservation by leaving the patient's organ container.
+        // Brains outside a supported patient have no simulated perfusion, including unsupported transplants.
         var brains = EntityQueryEnumerator<CerebralHealthComponent, OrganComponent>();
         while (brains.MoveNext(out _, out var brain, out var organ))
         {
-            if (organ.Body != null)
+            if (organ.Body is { } host && HasComp<PhysiologyComponent>(host)
+                && HasComp<PhysiologyStateComponent>(host) && HasComp<BodyComponent>(host)
+                && HasComp<MobStateComponent>(host))
                 continue;
             (brain.OxygenDebt, brain.Damage) = PhysiologyModel.Advance(
                 brain.OxygenDebt, brain.Damage, 0f, frameTime);
@@ -203,18 +205,18 @@ public sealed class PhysiologySystem : EntitySystem
 
     private void OnStateChangeAttempt(Entity<PhysiologyComponent> ent, ref MobStateChangeAttemptEvent args)
     {
-        if (args.NewState == MobState.Dead)
-            return;
-
+        var expected = MobState.Dead;
         foreach (var organ in _body.EnumerateOrgans<CerebralHealthComponent>(ent.Owner))
         {
-            if (organ.Comp2.Damage < PhysiologyModel.MaximumBrainDamage
-                && (args.NewState != MobState.Alive || organ.Comp2.OxygenDebt < PhysiologyModel.UnconsciousDebt))
-                return;
+            if (organ.Comp2.Damage < PhysiologyModel.MaximumBrainDamage)
+                expected = organ.Comp2.OxygenDebt >= PhysiologyModel.UnconsciousDebt
+                    ? MobState.Critical
+                    : MobState.Alive;
+            break;
         }
 
-        // Defibrillators and healing damage must not revive a destroyed or absent brain.
-        args.Cancelled = true;
+        // Reject incompatible transitions before death/revival side effects, not on the next frame.
+        args.Cancelled |= args.NewState != expected;
     }
 
     private void OnRejuvenate(Entity<PhysiologyComponent> ent, ref RejuvenateEvent args)
