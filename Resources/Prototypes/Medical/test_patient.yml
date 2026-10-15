@@ -1,5 +1,37 @@
 # Explicit opt-in: ordinary crew continue using upstream medicine.
 - type: entity
+  parent: OperatingTable
+  id: MedicalTestOperatingTable
+  name: experimental operating table
+  suffix: Experimental Physiology
+  description: A test station for internal trauma repair. Buckle the patient here and stop external bleeding before treatment.
+  components:
+  - type: MedicalOperatingTable
+
+- type: entity
+  parent: BaseHealingItem
+  id: MedicalTestOrganRepairKit
+  name: experimental organ repair supplies
+  suffix: Experimental Physiology
+  description: Prototype internal trauma treatment. Use on another patient buckled to an experimental operating table after stopping bleeding. Repairs one injured organ per application, not brain damage or missing organs.
+  components:
+  - type: Sprite
+    state: gauze
+  - type: Item
+    heldPrefix: gauze
+  - type: InternalTraumaTreatment
+  - type: Stack
+    stackType: MedicalTestOrganRepair
+    count: 10
+
+- type: stack
+  id: MedicalTestOrganRepair
+  name: experimental organ repair supplies
+  icon: { sprite: Objects/Specific/Medical/medical.rsi, state: gauze }
+  spawn: MedicalTestOrganRepairKit
+  maxCount: 10
+
+- type: entity
   parent: MobHuman
   id: MobMedicalTestHuman
   name: medical test patient

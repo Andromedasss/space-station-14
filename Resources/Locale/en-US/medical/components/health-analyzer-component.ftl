@@ -33,3 +33,5 @@ health-analyzer-physiology-brain-missing = Brain absent. Transplant required.
 health-analyzer-physiology-brain-dead = Irreversible brain death. Restoring circulation cannot revive.
 health-analyzer-physiology-injury = {$part}: injury {$damage} / bleeding {$bleeding} per tick
 health-analyzer-physiology-organ-injury = {$organ}: internal trauma {$trauma}/100
+medical-internal-treatment-requirements = Requires another patient with a viable brain, buckled to an experimental operating table, with external bleeding stopped.
+medical-internal-treatment-complete = Internal trauma repaired. Rescan the patient before further treatment.

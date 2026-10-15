@@ -5,16 +5,149 @@ using Content.Server.Medical;
 using Content.Shared.Body;
 using Content.Shared.Body.Components;
 using Content.Shared.Body.Systems;
+using Content.Shared.Buckle;
 using Content.Shared.Mobs.Systems;
 using Content.Shared.Medical;
 using Content.Shared.Movement.Components;
 using Content.Shared.Movement.Systems;
+using Content.Shared.Stacks;
 using Robust.Client.UserInterface.Controls;
+using Robust.Shared.Containers;
 
 namespace Content.IntegrationTests.Tests.Body;
 
 public sealed class MedicalTreatmentInteractionTest : InteractionTest
 {
+    [TestCase("MobHuman", "MedicalTestOperatingTable")]
+    [TestCase("MobMedicalTestHuman", "OperatingTable")]
+    public async Task InternalTraumaTreatmentDoesNotApplyOutsideExperimentalSetup(string patientPrototype, string tablePrototype)
+    {
+        await AddAtmosphere();
+        await SpawnTarget(patientPrototype);
+        var table = await Spawn(tablePrototype);
+        await Server.WaitPost(() =>
+        {
+            var patient = STarget!.Value;
+            foreach (var organ in SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(patient))
+                organ.Comp2.Trauma = 40f;
+            Assert.That(SEntMan.System<SharedBuckleSystem>().TryBuckle(patient, null, SEntMan.GetEntity(table)), Is.True);
+        });
+        var kit = await PlaceInHands("MedicalTestOrganRepairKit", 10);
+        await Interact(awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.Zero);
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(kit)).Count, Is.EqualTo(10));
+            Assert.That(SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget!.Value)
+                .All(p => p.Comp2.Trauma == 40f), Is.True);
+        });
+    }
+
+    [TestCase("unbuckle")]
+    [TestCase("bleeding")]
+    [TestCase("organ removal")]
+    [TestCase("brain death")]
+    public async Task InternalTraumaTreatmentCancelsWhenConditionsChange(string change)
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        var table = await Spawn("MedicalTestOperatingTable");
+        await Server.WaitPost(() =>
+        {
+            var patient = STarget!.Value;
+            Assert.That(SEntMan.System<MedicalWoundSystem>().TryInjure(patient, "Torso", "Blunt", 100f), Is.True);
+            Assert.That(SEntMan.System<SharedBuckleSystem>().TryBuckle(patient, null, SEntMan.GetEntity(table)), Is.True);
+        });
+        var kit = await PlaceInHands("MedicalTestOrganRepairKit", 10);
+        await Interact(awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.EqualTo(1));
+        var action = ActiveDoAfters.Single();
+        await Server.WaitPost(() =>
+        {
+            var patient = STarget!.Value;
+            switch (change)
+            {
+                case "unbuckle":
+                    SEntMan.System<SharedBuckleSystem>().Unbuckle(patient, null);
+                    break;
+                case "bleeding":
+                    SEntMan.System<BloodstreamSystem>().TryModifyBleedAmount(patient, 1f);
+                    break;
+                case "organ removal":
+                    var organ = SEntMan.GetEntity(((InternalTraumaTreatmentDoAfterEvent) action.Args.Event).Organ);
+                    var containers = SEntMan.System<SharedContainerSystem>();
+                    Assert.That(containers.Remove(organ, containers.GetContainer(patient, BodyComponent.ContainerID)), Is.True);
+                    break;
+                case "brain death":
+                    SEntMan.System<BodySystem>().EnumerateOrgans<CerebralHealthComponent>(patient).Single().Comp2.Damage = 100f;
+                    break;
+            }
+        });
+        await RunTicks(600);
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(action.Cancelled, Is.True);
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(kit)).Count, Is.EqualTo(10));
+            Assert.That(SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget!.Value)
+                .All(p => p.Comp2.Trauma == 40f), Is.True);
+        });
+    }
+
+    [Test]
+    public async Task InternalTraumaTreatmentRequiresTableHemostasisAndConsumesOnlyOnCompletion()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        await Server.WaitPost(() => Assert.That(SEntMan.System<MedicalWoundSystem>()
+            .TryInjure(STarget!.Value, "Torso", "Piercing", 60f), Is.True));
+        await InteractUsing("MedicalTestOrganRepairKit", 10, awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.Zero);
+        var table = await Spawn("MedicalTestOperatingTable");
+        await Server.WaitPost(() => Assert.That(SEntMan.System<SharedBuckleSystem>()
+            .TryBuckle(STarget!.Value, null, SEntMan.GetEntity(table)), Is.True));
+        await Interact(awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.Zero, "External bleeding must be stopped first.");
+        await InteractUsing("Gauze", 10);
+        await Server.WaitAssertion(() =>
+        {
+            SEntMan.System<PhysiologySystem>().Update(60f);
+            Assert.That(SEntMan.System<MobStateSystem>().IsCritical(STarget!.Value), Is.True);
+        });
+        var kit = await PlaceInHands("MedicalTestOrganRepairKit", 10);
+        await Interact(awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.EqualTo(1));
+        await CancelDoAfters();
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(kit)).Count, Is.EqualTo(10));
+            Assert.That(SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget!.Value)
+                .Sum(p => p.Comp2.Trauma), Is.EqualTo(80f));
+        });
+        await RunTicks(30);
+        await Interact(awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.EqualTo(1));
+        await AwaitDoAfters();
+        await Server.WaitAssertion(() => Assert.That(SEntMan.System<BodySystem>()
+            .EnumerateOrgans<MedicalOrganComponent>(STarget!.Value).Sum(p => p.Comp2.Trauma), Is.EqualTo(55f)));
+        // Each application repairs only one organ and does not automatically repeat.
+        await Interact();
+        await Interact();
+        await Interact();
+        await Server.WaitAssertion(() =>
+        {
+            var scan = SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!;
+            Assert.That(scan.OrganInjuries, Is.Empty);
+            Assert.That(scan.HeartFunction, Is.EqualTo(1f));
+            Assert.That(scan.LungFunction, Is.EqualTo(1f));
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(kit)).Count, Is.EqualTo(6));
+        });
+        await Interact(awaitDoAfters: false);
+        Assert.That(ActiveDoAfters.Count(), Is.Zero, "Healthy organs must not consume supplies.");
+        await Server.WaitAssertion(() => Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(kit)).Count, Is.EqualTo(6)));
+        await RunTicks(900);
+        await Server.WaitAssertion(() => Assert.That(SEntMan.System<MobStateSystem>().IsAlive(STarget!.Value), Is.True));
+    }
+
     [Test]
     public async Task GauzeRepairsExternalWoundButScannerStillReportsInternalTrauma()
     {
