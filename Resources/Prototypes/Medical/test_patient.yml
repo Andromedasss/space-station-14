@@ -1,0 +1,37 @@
+# Explicit opt-in: ordinary crew continue using upstream medicine.
+- type: entity
+  parent: MobHuman
+  id: MobMedicalTestHuman
+  name: medical test patient
+  suffix: Experimental Physiology
+  components:
+  - type: Physiology
+  - type: PhysiologyState
+  - type: InitialBody
+    organs:
+      Brain: OrganMedicalTestBrain
+      Heart: OrganMedicalTestHeart
+      Lungs: OrganMedicalTestLungs
+
+- type: entity
+  parent: OrganHumanBrain
+  id: OrganMedicalTestBrain
+  suffix: Experimental Physiology
+  components:
+  - type: CerebralHealth
+
+- type: entity
+  parent: OrganHumanHeart
+  id: OrganMedicalTestHeart
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalOrgan
+    kind: Heart
+
+- type: entity
+  parent: OrganHumanLungs
+  id: OrganMedicalTestLungs
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalOrgan
+    kind: Lungs

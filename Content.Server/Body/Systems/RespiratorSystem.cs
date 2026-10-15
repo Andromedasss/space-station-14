@@ -20,6 +20,7 @@ using Content.Shared.EntityEffects;
 using Content.Shared.EntityEffects.Effects.Body;
 using Content.Shared.EntityEffects.Effects.Damage;
 using Content.Shared.Metabolism;
+using Content.Shared.Medical;
 using Content.Shared.Mobs.Systems;
 using JetBrains.Annotations;
 using Robust.Shared.Prototypes;
@@ -89,7 +90,8 @@ public sealed partial class RespiratorSystem : EntitySystem
 
             UpdateSaturation(uid, -(float)respirator.UpdateInterval.TotalSeconds, respirator);
 
-            if (!_mobState.IsIncapacitated(uid)) // cannot breathe in crit.
+            // Experimental unconscious patients can still breathe; organ failure is handled separately.
+            if (!_mobState.IsIncapacitated(uid) || HasComp<PhysiologyComponent>(uid))
             {
                 switch (respirator.Status)
                 {

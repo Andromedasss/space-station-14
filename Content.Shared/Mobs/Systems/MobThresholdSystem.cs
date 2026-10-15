@@ -5,6 +5,7 @@ using Content.Shared.Damage;
 using Content.Shared.Damage.Components;
 using Content.Shared.Damage.Systems;
 using Content.Shared.FixedPoint;
+using Content.Shared.Medical;
 using Content.Shared.Mobs.Components;
 using Content.Shared.Mobs.Events;
 using Robust.Shared.GameStates;
@@ -335,6 +336,10 @@ public sealed partial class MobThresholdSystem : EntitySystem
     private void CheckThresholds(EntityUid target, MobStateComponent mobStateComponent,
         MobThresholdsComponent thresholdsComponent, DamageableComponent damageableComponent, EntityUid? origin = null)
     {
+        // Opt-in test patients have a single, server-side physiology state authority.
+        if (HasComp<PhysiologyComponent>(target))
+            return;
+
         foreach (var (threshold, mobState) in thresholdsComponent.Thresholds.Reverse())
         {
             if (_damageable.GetTotalDamage((target, damageableComponent)) < threshold)

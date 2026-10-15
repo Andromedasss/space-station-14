@@ -89,6 +89,11 @@ public partial class MobStateSystem
         if (oldState == newState || !component.AllowedStates.Contains(newState))
             return;
 
+        var attempt = new MobStateChangeAttemptEvent(newState);
+        RaiseLocalEvent(target, ref attempt);
+        if (attempt.Cancelled)
+            return;
+
         OnExitState(target, component, oldState);
         component.CurrentState = newState;
         OnEnterState(target, component, newState);
@@ -105,3 +110,9 @@ public partial class MobStateSystem
 
     #endregion
 }
+
+/// <summary>
+/// Allows authoritative physiology to reject incompatible external state changes before side effects occur.
+/// </summary>
+[ByRefEvent]
+public record struct MobStateChangeAttemptEvent(MobState NewState, bool Cancelled = false);
