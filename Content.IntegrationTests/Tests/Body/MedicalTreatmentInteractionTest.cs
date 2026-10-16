@@ -1,5 +1,7 @@
 using System.Linq;
 using Content.Client.HealthAnalyzer.UI;
+using Content.Client.Medical;
+using Content.Client.UserInterface.Systems.Hotbar.Widgets;
 using Content.IntegrationTests.Tests.Interaction;
 using Content.Server.Medical;
 using Content.Server.Power.Components;
@@ -23,6 +25,36 @@ namespace Content.IntegrationTests.Tests.Body;
 public sealed class MedicalTreatmentInteractionTest : InteractionTest
 {
     [Test]
+    public async Task DebugStationPowerSuppliesDisconnectedLifeSupportAndRespectsItsSwitch()
+    {
+        var bed = await Spawn("MedicalTestIntensiveCareBed");
+        try
+        {
+            await Server.WaitPost(() => Server.CfgMan.SetCVar(Content.Shared.CCVar.CCVars.DebugStationPower, true));
+            await RunTicks(10);
+            await Server.WaitAssertion(() =>
+            {
+                var power = SEntMan.GetComponent<ApcPowerReceiverComponent>(SEntMan.GetEntity(bed));
+                Assert.That(power.Powered, Is.True);
+                power.PowerDisabled = true;
+            });
+            await RunTicks(10);
+            await Server.WaitAssertion(() => Assert.That(SEntMan.GetComponent<ApcPowerReceiverComponent>(SEntMan.GetEntity(bed)).Powered, Is.False));
+            await Server.WaitPost(() =>
+            {
+                SEntMan.GetComponent<ApcPowerReceiverComponent>(SEntMan.GetEntity(bed)).PowerDisabled = false;
+                Server.CfgMan.SetCVar(Content.Shared.CCVar.CCVars.DebugStationPower, false);
+            });
+            await RunTicks(10);
+            await Server.WaitAssertion(() => Assert.That(SEntMan.GetComponent<ApcPowerReceiverComponent>(SEntMan.GetEntity(bed)).Powered, Is.False));
+        }
+        finally
+        {
+            await Server.WaitPost(() => Server.CfgMan.SetCVar(Content.Shared.CCVar.CCVars.DebugStationPower, false));
+        }
+    }
+
+    [Test]
     public async Task LifeSupportVentilatesFromReservoirButEmptySupplyCannotPreventHypoxia()
     {
         // No ambient atmosphere: respiratory reserve must come from the finite machine reservoir.
@@ -41,6 +73,7 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         {
             var scan = SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!;
             Assert.That(scan.OxygenDelivery, Is.GreaterThanOrEqualTo(0.5f));
+            Assert.That(scan.LifeSupportGasMoles, Is.GreaterThan(0f));
             Assert.That(SEntMan.System<MobStateSystem>().IsAlive(STarget.Value), Is.True);
             SEntMan.GetComponent<MedicalLifeSupportComponent>(SEntMan.GetEntity(bed)).GasSupply.Clear();
         });
@@ -49,8 +82,15 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         {
             var scan = SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!;
             Assert.That(scan.OxygenDelivery, Is.Zero);
+            Assert.That(scan.LifeSupport, Is.True);
+            Assert.That(scan.LifeSupportGasMoles, Is.Zero);
             Assert.That(scan.OxygenDebt, Is.GreaterThan(0f));
         });
+        await InteractUsing("HandheldHealthAnalyzer");
+        await RunTicks(40);
+        await Client.WaitAssertion(() => Assert.That(GetControlFromChildren<Label>(
+            label => label.Text != null && label.Text.StartsWith("Life support gas remaining:"),
+            GetWindow<HealthAnalyzerWindow>()).Text, Does.Contain("0.00 mol")));
     }
 
     [Test]
@@ -137,6 +177,60 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
             Is.EqualTo(category)));
     }
 
+    [TestCase("Torso", true)]
+    [TestCase("Head", true)]
+    [TestCase("Abdomen", false)]
+    [TestCase("ArmLeft", false)]
+    public async Task DirectToolsFollowHudZoneAndRequireReverseClosure(string category, bool bone)
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        var table = await Spawn("MedicalTestOperatingTable");
+        await Server.WaitPost(() => Assert.That(SEntMan.System<SharedBuckleSystem>()
+            .TryBuckle(STarget!.Value, null, SEntMan.GetEntity(table)), Is.True));
+        var targeting = GetControlFromChildren<MedicalTargetingControl>(GetWidget<HotbarGui>(), true);
+        await ClickControl(GetControlFromChildren<Button>(b => b.Name == category, targeting));
+        await RunTicks(10);
+        await InteractUsing("MedicalTestScalpel");
+        await InteractUsing("MedicalTestHemostat");
+        await InteractUsing("MedicalTestRetractor");
+        await InteractUsing("MedicalTestCautery", awaitDoAfters: false);
+        Assert.That(ActiveDoAfters, Is.Empty, "Cautery cannot close spread skin.");
+        await Server.WaitAssertion(() =>
+        {
+            var site = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value)
+                .Single(p => p.Comp1.Category?.Id == category);
+            Assert.That(site.Comp2.SurgicalAccess, Is.EqualTo(3));
+            Assert.That(site.Comp2.InternalsExposed, Is.EqualTo(!bone));
+            Assert.That(SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget.Value)
+                .Where(p => p.Owner != site.Owner).All(p => p.Comp2.SurgicalAccess == 0), Is.True);
+        });
+        if (bone)
+        {
+            await InteractUsing("MedicalTestBoneSaw");
+            await InteractUsing("MedicalTestRetractor");
+            await Server.WaitAssertion(() => Assert.That(SEntMan.System<BodySystem>()
+                .EnumerateOrgans<MedicalWoundComponent>(STarget!.Value)
+                .Single(p => p.Comp1.Category?.Id == category).Comp2.InternalsExposed, Is.True));
+            await InteractUsing("MedicalTestCautery", awaitDoAfters: false);
+            Assert.That(ActiveDoAfters, Is.Empty);
+            await InteractUsing("MedicalTestRetractor");
+            await InteractUsing("MedicalTestCautery", awaitDoAfters: false);
+            Assert.That(ActiveDoAfters, Is.Empty, "Sawn bone must be fixed before closing skin.");
+            await InteractUsing("MedicalTestBoneSetter");
+        }
+        await InteractUsing("MedicalTestRetractor");
+        await InteractUsing("MedicalTestCautery");
+        await Server.WaitAssertion(() =>
+        {
+            var site = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value)
+                .Single(p => p.Comp1.Category?.Id == category).Comp2;
+            Assert.That(site.SurgicalAccess, Is.Zero);
+            Assert.That(site.BoneAccess, Is.Zero);
+            Assert.That(site.Injury.GetTotal().Float(), Is.GreaterThan(0f), "Closing does not erase tissue injury.");
+        });
+    }
+
     [Test]
     public async Task DefaultDressingCannotTreatDistantWounds()
     {
@@ -153,6 +247,138 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
                 .Single(p => p.Comp1.Category?.Id == "LegLeft");
             Assert.That(leg.Comp2.Injury.GetTotal().Float(), Is.EqualTo(20f));
             Assert.That(leg.Comp2.Bleeding, Is.GreaterThan(0f));
+        });
+    }
+
+    [Test]
+    public async Task AnalyzerHasNoZoneSelectorAndTreatmentUsesHudSelection()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        await Server.WaitPost(() => SEntMan.System<MedicalWoundSystem>().TryInjure(STarget!.Value, "LegLeft", "Slash", 20f));
+        await InteractUsing("HandheldHealthAnalyzer");
+        await RunTicks(40);
+        var control = GetControlFromChildren<MedicalTargetingControl>(GetWidget<HotbarGui>(), true);
+        var button = GetControlFromChildren<Button>(b => b.Name == "LegLeft", control);
+        await ClickControl(button);
+        await RunTicks(70);
+        await Server.WaitAssertion(() => Assert.That(SEntMan.GetComponent<MedicalTargetingComponent>(SPlayer).Category, Is.EqualTo("LegLeft")));
+        await Client.WaitAssertion(() =>
+        {
+            var window = GetWindow<HealthAnalyzerWindow>();
+            Assert.That(TryGetControlFromChildren<MedicalBodySelector>(_ => true, window, out _), Is.False);
+            Assert.That(TryGetControlFromChildren<Button>(b => b.Text != null && b.Text.StartsWith("Target zone:"), window, out _), Is.False);
+            Assert.That(button.Pressed, Is.True);
+        });
+        await InteractUsing("Gauze", 10);
+        await Server.WaitAssertion(() => Assert.That(SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!.Injuries, Is.Empty));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task ExplicitOrganRepairKeepsItsPhysicalTargetAndCancelsOnAccessRevision(bool changeAccess)
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        var table = await Spawn("MedicalTestOperatingTable");
+        await Server.WaitPost(() => Assert.That(SEntMan.System<SharedBuckleSystem>()
+            .TryBuckle(STarget!.Value, null, SEntMan.GetEntity(table)), Is.True));
+        await OpenSurgicalAccess();
+        var kit = await PlaceInHands("MedicalTestOrganRepairKit", 10);
+        await Server.WaitPost(() =>
+        {
+            foreach (var organ in SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget!.Value))
+                organ.Comp2.Trauma = organ.Comp2.Kind == MedicalOrganKind.Heart ? 60f : 20f;
+        });
+        await Client.WaitPost(() => CEntMan.System<Content.Client.Verbs.VerbSystem>()
+            .ExecuteVerb(Target!.Value, new UtilityVerb { Text = "Repair internal organ: Lungs" }));
+        await RunTicks(10);
+        Assert.That(ActiveDoAfters.Count(), Is.EqualTo(1));
+        await Server.WaitAssertion(() =>
+        {
+            var action = (InternalTraumaTreatmentDoAfterEvent) ActiveDoAfters.Single().Args.Event;
+            Assert.That(SEntMan.GetComponent<MedicalOrganComponent>(SEntMan.GetEntity(action.Organ)).Kind, Is.EqualTo(MedicalOrganKind.Lungs));
+            if (changeAccess)
+                SEntMan.GetComponent<MedicalWoundComponent>(SEntMan.GetEntity(action.Part)).SurgeryRevision++;
+        });
+        if (changeAccess)
+            await RunSeconds(10f);
+        else
+            await AwaitDoAfters();
+        await Server.WaitAssertion(() =>
+        {
+            var organs = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget!.Value).ToArray();
+            Assert.That(organs.Single(o => o.Comp2.Kind == MedicalOrganKind.Heart).Comp2.Trauma, Is.EqualTo(60f));
+            Assert.That(organs.Single(o => o.Comp2.Kind == MedicalOrganKind.Lungs).Comp2.Trauma, Is.EqualTo(changeAccess ? 20f : 0f));
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(kit)).Count, Is.EqualTo(changeAccess ? 10 : 9));
+        });
+    }
+
+    [Test]
+    public async Task AnalyzerHasNoZoneControlsAfterDetachmentOrForOrdinaryPatients()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        await InteractUsing("HandheldHealthAnalyzer");
+        await RunTicks(40);
+        await Client.WaitAssertion(() => Assert.That(TryGetControlFromChildren<MedicalBodySelector>(
+            _ => true, GetWindow<HealthAnalyzerWindow>(), out _), Is.False));
+        await Server.WaitPost(() =>
+        {
+            var arm = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value)
+                .Single(p => p.Comp1.Category?.Id == "ArmLeft");
+            var containers = SEntMan.System<SharedContainerSystem>();
+            Assert.That(containers.Remove(arm.Owner, containers.GetContainer(STarget.Value, BodyComponent.ContainerID)), Is.True);
+        });
+        // A request from the old scan must not select a part which has already been detached.
+        await Client.WaitPost(() => CEntMan.System<Content.Client.Verbs.VerbSystem>()
+            .ExecuteVerb(Target!.Value, new Verb { Text = "Target zone: ArmLeft" }));
+        await RunTicks(70);
+        await Server.WaitAssertion(() => Assert.That(SEntMan.TryGetComponent<MedicalTargetingComponent>(SPlayer, out var selection)
+            ? selection.Category : "Torso", Is.EqualTo("Torso")));
+        await Client.WaitAssertion(() =>
+        {
+            var window = GetWindow<HealthAnalyzerWindow>();
+            Assert.That(TryGetControlFromChildren<Button>(b => b.Text == "Target zone: ArmLeft", window, out _), Is.False);
+            Assert.That(TryGetControlFromChildren<Button>(b => b.Text == "Target zone: HandLeft", window, out _), Is.False);
+            Assert.That(TryGetControlFromChildren<MedicalBodySelector>(_ => true, window, out _), Is.False);
+        });
+        await SpawnTarget("MobHuman");
+        await Interact();
+        await RunTicks(40);
+        await Client.WaitAssertion(() => Assert.That(TryGetControlFromChildren<Button>(
+            b => b.Text != null && b.Text.StartsWith("Target zone:"), GetWindow<HealthAnalyzerWindow>(), out _), Is.False));
+    }
+
+    [Test]
+    public async Task ExplicitOrganRepairIsDisabledWithoutAccessAndCannotBeForged()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        var table = await Spawn("MedicalTestOperatingTable");
+        await Server.WaitPost(() =>
+        {
+            Assert.That(SEntMan.System<SharedBuckleSystem>().TryBuckle(STarget!.Value, null, SEntMan.GetEntity(table)), Is.True);
+            foreach (var organ in SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget.Value))
+                organ.Comp2.Trauma = 20f;
+        });
+        var kit = await PlaceInHands("MedicalTestOrganRepairKit", 10);
+        await Server.WaitAssertion(() =>
+        {
+            var verbs = SEntMan.System<SharedVerbSystem>().GetLocalVerbs(STarget!.Value, SPlayer, typeof(UtilityVerb))
+                .Where(v => v.Text.StartsWith("Repair internal organ:")).ToArray();
+            Assert.That(verbs.Length, Is.EqualTo(6));
+            Assert.That(verbs.All(v => v.Disabled && !string.IsNullOrEmpty(v.Message)), Is.True);
+        });
+        await Client.WaitPost(() => CEntMan.System<Content.Client.Verbs.VerbSystem>()
+            .ExecuteVerb(Target!.Value, new UtilityVerb { Text = "Repair internal organ: Lungs" }));
+        await RunTicks(10);
+        Assert.That(ActiveDoAfters.Count(), Is.Zero);
+        await Server.WaitAssertion(() =>
+        {
+            Assert.That(SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget!.Value)
+                .All(o => o.Comp2.Trauma == 20f), Is.True);
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(kit)).Count, Is.EqualTo(10));
         });
     }
 
@@ -228,10 +454,11 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         await Server.WaitAssertion(() =>
         {
             Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(gauze)).Count, Is.EqualTo(10));
-            var torso = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value)
-                .Single(p => p.Comp1.Category?.Id == "Torso");
-            Assert.That(torso.Comp2.Injury.GetTotal().Float(), Is.InRange(19.8f, 20f));
-            Assert.That(torso.Comp2.Bleeding, Is.GreaterThan(0f));
+            var parts = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value).ToArray();
+            var groin = parts.Single(p => p.Comp1.Category?.Id == "Groin");
+            Assert.That(groin.Comp2.Injury.GetTotal().Float(), Is.InRange(19.8f, 20f));
+            Assert.That(groin.Comp2.Bleeding, Is.GreaterThan(0f));
+            Assert.That(parts.Where(p => p.Comp1.Category?.Id != "Groin").All(p => p.Comp2.Injury.Empty), Is.True);
         });
     }
 
@@ -339,15 +566,22 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         });
     }
 
-    [Test]
-    public async Task InternalBleedingSurvivesDressingsAndStopsAfterVascularRepair()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task InternalBleedingSurvivesDressingsAndStopsAfterVascularRepair(bool crushing)
     {
         await AddAtmosphere();
         await SpawnTarget("MobMedicalTestHuman");
         var table = await Spawn("MedicalTestOperatingTable");
         await Server.WaitPost(() =>
         {
-            SEntMan.System<MedicalWoundSystem>().TryInjure(STarget!.Value, "LegLeft", "Piercing", 60f);
+            if (crushing)
+            {
+                for (var i = 0; i < 20; i++)
+                    SEntMan.System<MedicalWoundSystem>().TryInjure(STarget!.Value, "LegLeft", "Blunt", 10f);
+            }
+            else
+                SEntMan.System<MedicalWoundSystem>().TryInjure(STarget!.Value, "LegLeft", "Piercing", 60f);
             Assert.That(SEntMan.System<SharedBuckleSystem>().TryBuckle(STarget.Value, null, SEntMan.GetEntity(table)), Is.True);
         });
         await SelectZone("LegLeft");
@@ -357,9 +591,9 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         {
             var leg = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(STarget!.Value)
                 .Single(p => p.Comp1.Category?.Id == "LegLeft");
-            Assert.That(leg.Comp2.Injury.GetTotal().Float(), Is.Zero);
+            Assert.That(leg.Comp2.Injury.GetTotal().Float(), crushing ? Is.GreaterThan(190f) : Is.Zero);
             Assert.That(leg.Comp2.Bleeding, Is.Zero);
-            Assert.That(leg.Comp2.VascularDamage, Is.EqualTo(20f));
+            Assert.That(leg.Comp2.VascularDamage, Is.EqualTo(crushing ? 40f : 20f));
             before = SEntMan.System<BloodstreamSystem>().GetBloodLevel(STarget.Value);
         });
         await RunTicks(600);
@@ -427,6 +661,15 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
 
     private async Task SurgeryStep(string tool, string action, string part = "Torso", string organ = "")
     {
+        if (action == "Close")
+        {
+            if (part is "Torso" or "Head")
+            {
+                await SurgeryStep("MedicalTestRetractor", "ApproximateBone", part);
+                await SurgeryStep("MedicalTestBoneSetter", "RepairBone", part);
+            }
+            await SurgeryStep("MedicalTestRetractor", "Approximate", part);
+        }
         await PlaceInHands(tool);
         await Client.WaitPost(() => CEntMan.System<Content.Client.Verbs.VerbSystem>()
             .ExecuteVerb(Target!.Value, new AlternativeVerb { Text = $"Surgery: {action} {part} {organ}" }));
@@ -440,6 +683,11 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         await SurgeryStep("MedicalTestScalpel", "Incise", part);
         await SurgeryStep("MedicalTestHemostat", "Clamp", part);
         await SurgeryStep("MedicalTestRetractor", "Retract", part);
+        if (part is "Torso" or "Head")
+        {
+            await SurgeryStep("MedicalTestBoneSaw", "SawBone", part);
+            await SurgeryStep("MedicalTestRetractor", "SpreadBone", part);
+        }
     }
 
     [Test]
@@ -484,7 +732,10 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         {
             Assert.That(SEntMan.GetComponent<OrganComponent>(SEntMan.GetEntity(heart)).Body, Is.EqualTo(STarget!.Value));
             Assert.That(SEntMan.GetComponent<MedicalOrganComponent>(SEntMan.GetEntity(heart)).Trauma, Is.EqualTo(30f));
-            Assert.That(SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!.HeartFunction, Is.EqualTo(0.7f).Within(0.001f));
+            var viability = SEntMan.GetComponent<MedicalOrganViabilityComponent>(SEntMan.GetEntity(heart)).Damage;
+            Assert.That(viability, Is.GreaterThan(0f).And.LessThan(5f));
+            Assert.That(SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!.HeartFunction,
+                Is.EqualTo(0.7f * (1f - viability / 100f)).Within(0.001f));
         });
         await SurgeryStep("MedicalTestCautery", "Close");
     }
@@ -617,8 +868,50 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
             Assert.That(action.Cancelled, Is.True);
             Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(kit)).Count, Is.EqualTo(10));
             Assert.That(SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget!.Value)
-                .All(p => p.Comp2.Trauma == 40f), Is.True);
+                .All(p => p.Comp2.Trauma == (p.Comp2.ProtectedBy == "Torso" ? 40f : 0f)), Is.True);
         });
+    }
+
+    [Test]
+    public async Task SurgicalIntestinalRepairStopsContaminationWithoutErasingExistingBurden()
+    {
+        await AddAtmosphere();
+        await SpawnTarget("MobMedicalTestHuman");
+        var table = await Spawn("MedicalTestOperatingTable");
+        await Server.WaitPost(() => Assert.That(SEntMan.System<SharedBuckleSystem>()
+            .TryBuckle(STarget!.Value, null, SEntMan.GetEntity(table)), Is.True));
+        await SelectZone("Abdomen");
+        await OpenSurgicalAccess("Abdomen");
+        await Server.WaitAssertion(() =>
+        {
+            var intestine = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget!.Value)
+                .Single(p => p.Comp2.Kind == MedicalOrganKind.Intestines);
+            intestine.Comp2.Trauma = 70f;
+            intestine.Comp2.Perforated = true;
+            SEntMan.GetComponent<PhysiologyStateComponent>(STarget.Value).Contamination = 25f;
+        });
+        await SurgeryStep("MedicalTestCautery", "Close", "Abdomen");
+        await Server.WaitAssertion(() => Assert.That(SEntMan.System<BodySystem>()
+            .EnumerateOrgans<MedicalOrganComponent>(STarget!.Value)
+            .Single(p => p.Comp2.Kind == MedicalOrganKind.Intestines).Comp2.Perforated, Is.True));
+        await OpenSurgicalAccess("Abdomen");
+        var kit = await PlaceInHands("MedicalTestOrganRepairKit", 10);
+        await Interact();
+        await Server.WaitAssertion(() =>
+        {
+            var intestine = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(STarget!.Value)
+                .Single(p => p.Comp2.Kind == MedicalOrganKind.Intestines);
+            Assert.That(intestine.Comp2.Trauma, Is.EqualTo(45f));
+            Assert.That(intestine.Comp2.Perforated, Is.False);
+            Assert.That(SEntMan.GetComponent<StackComponent>(SEntMan.GetEntity(kit)).Count, Is.EqualTo(9));
+            Assert.That(SEntMan.System<PhysiologySystem>().Scan(STarget.Value)!.Contamination, Is.GreaterThan(0f));
+        });
+        await SurgeryStep("MedicalTestCautery", "Close", "Abdomen");
+        var before = 0f;
+        await Server.WaitPost(() => before = SEntMan.System<PhysiologySystem>().Scan(STarget!.Value)!.Contamination);
+        await RunSeconds(10f);
+        await Server.WaitAssertion(() => Assert.That(SEntMan.System<PhysiologySystem>()
+            .Scan(STarget!.Value)!.Contamination, Is.LessThan(before)));
     }
 
     [Test]
@@ -738,8 +1031,9 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         await Client.WaitAssertion(() =>
         {
             var window = GetWindow<HealthAnalyzerWindow>();
-            Assert.That(GetControlFromChildren<Label>(label => label.Text != null && label.Text.Contains("LegLeft"), window).Text,
+            Assert.That(GetControlFromChildren<Label>(label => label.Text != null && label.Text.StartsWith("LegLeft:"), window).Text,
                 Does.Contain("injury 20"));
+            Assert.That(GetControlFromChildren<Label>(label => label.Text == "Localized tissue injuries", window).Visible, Is.True);
             Assert.That(GetControlFromChildren<Label>(label => label.Text != null && label.Text.Contains("not SpO2"), window).Visible, Is.True);
             Assert.That(GetControlFromChildren<Label>(label => label.Text != null && label.Text.Contains("Locomotor support"), window).Text,
                 Does.Contain("92%"));
@@ -796,6 +1090,16 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
                 .TryInjure(STarget!.Value, "LegLeft", "Piercing", damage), Is.True));
             await RunTicks(900);
         }
+        // Cooling during shock delays hypoxic unconsciousness; wait for the clinical state,
+        // not the old fixed normothermic deadline.
+        for (var i = 0; i < 12; i++)
+        {
+            var critical = false;
+            await Server.WaitPost(() => critical = SEntMan.System<MobStateSystem>().IsCritical(STarget!.Value));
+            if (critical)
+                break;
+            await RunSeconds(5f);
+        }
         await Server.WaitAssertion(() =>
         {
             var patient = STarget!.Value;
@@ -811,8 +1115,8 @@ public sealed class MedicalTreatmentInteractionTest : InteractionTest
         await SelectZone("LegLeft");
         await InteractUsing("Gauze", 10);
         await InteractUsing("Bloodpack", 10);
-        if (delayedTreatment)
-            await InteractUsing("Bloodpack", 10);
+        // The longer untreated hemorrhage now requires a second pack in both scenarios.
+        await InteractUsing("Bloodpack", 10);
         await RunTicks(900);
         await Server.WaitAssertion(() =>
         {

@@ -1,4 +1,5 @@
 using Content.Shared.Damage.Systems;
+using Content.Shared.Medical;
 using Content.Shared.Weapons.Hitscan.Components;
 using Content.Shared.Weapons.Hitscan.Events;
 
@@ -7,6 +8,7 @@ namespace Content.Shared.Weapons.Hitscan.Systems;
 public sealed partial class HitscanBasicDamageSystem : EntitySystem
 {
     [Dependency] private DamageableSystem _damage = default!;
+    [Dependency] private MedicalTargetingSystem _medicalTargeting = default!;
 
     public override void Initialize()
     {
@@ -22,7 +24,8 @@ public sealed partial class HitscanBasicDamageSystem : EntitySystem
 
         var dmg = ent.Comp.Damage * _damage.UniversalHitscanDamageModifier;
 
-        if(!_damage.TryChangeDamage(args.Data.HitEntity.Value, dmg, out var damageDealt, origin: args.Data.Gun))
+        if(!_damage.TryChangeDamage(args.Data.HitEntity.Value, dmg, out var damageDealt, origin: args.Data.Gun,
+                targetPart: _medicalTargeting.UntargetedPart(args.Data.HitEntity.Value, ent.Owner)))
             return;
 
         var damageEvent = new HitscanDamageDealtEvent

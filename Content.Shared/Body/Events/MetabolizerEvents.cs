@@ -24,3 +24,12 @@ public readonly record struct ApplyMetabolicMultiplierEvent(float Multiplier)
     /// </summary>
     public readonly float Multiplier = Multiplier;
 }
+
+/// <summary>Raised on the attached body for one reagent, including transfer without a metabolism entry.</summary>
+[ByRefEvent]
+public record struct MetabolismRateEvent(string stage, string reagent)
+{
+    public readonly string Stage = stage;
+    public readonly string Reagent = reagent;
+    public float Multiplier = 1f;
+}

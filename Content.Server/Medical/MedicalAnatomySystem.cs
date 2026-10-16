@@ -16,6 +16,7 @@ public sealed class MedicalAnatomySystem : EntitySystem
     [Dependency] private InitialBodySystem _initialBody = default!;
     [Dependency] private OrganRelationSystem _relations = default!;
     [Dependency] private SharedContainerSystem _containers = default!;
+    [Dependency] private MedicalOrganViabilitySystem _viability = default!;
     private readonly HashSet<EntityUid> _moving = new();
 
     public override void Initialize()
@@ -55,7 +56,7 @@ public sealed class MedicalAnatomySystem : EntitySystem
         var occupied = _body.EnumerateOrgans<OrganComponent>(ent.Owner).Select(p => p.Comp1.Category).ToHashSet();
         foreach (var part in incoming)
         {
-            if (!TryComp<OrganComponent>(part, out var candidate) || candidate.Category is not { } slot
+            if (!_viability.Viable(part) || !TryComp<OrganComponent>(part, out var candidate) || candidate.Category is not { } slot
                 || !_initialBody.SupportsCategory(ent.Owner, slot) || !occupied.Add(slot))
             {
                 args.Cancel();

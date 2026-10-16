@@ -1,4 +1,5 @@
 using System.Linq;
+using Content.Shared.Medical;
 using Content.Shared.Movement.Components;
 using Content.Shared.Movement.Systems;
 using Content.Shared.Temperature.Components;
@@ -79,6 +80,10 @@ public abstract partial class SharedTemperatureSystem : EntitySystem
 
     private void OnRefreshMovementSpeedModifiers(Entity<TemperatureSpeedComponent> ent, ref RefreshMovementSpeedModifiersEvent args)
     {
+        // Experimental physiology supplies its own continuous temperature modifier.
+        if (HasComp<PhysiologyComponent>(ent))
+            return;
+
         // Don't update speed and mispredict while we're compensating for lag.
         if (ent.Comp.NextSlowdownUpdate != null || ent.Comp.CurrentSpeedModifier == null)
             return;

@@ -21,5 +21,7 @@ public sealed class MedicalMobilitySystem : EntitySystem
     private void OnRefreshSpeed(Entity<PhysiologyComponent> ent, ref RefreshMovementSpeedModifiersEvent args)
     {
         args.ModifySpeed(ent.Comp.Mobility);
+        args.ModifySpeed(ent.Comp.TemperatureSpeed);
+        args.ModifySpeed(1f, PhysiologyModel.PainSprintModifier(ent.Comp.Pain));
     }
 }

@@ -27,15 +27,79 @@ public sealed class MedicalSurgerySystem : EntitySystem
     [Dependency] private ActionBlockerSystem _blocker = default!;
     [Dependency] private MedicalWoundSystem _wounds = default!;
     [Dependency] private PhysiologySystem _physiology = default!;
+    [Dependency] private MedicalOrganViabilitySystem _viability = default!;
     [Dependency] private ISharedAdminLogManager _admin = default!;
     [Dependency] private SharedPopupSystem _popup = default!;
+    [Dependency] private MedicalTargetingSystem _targeting = default!;
 
     public override void Initialize()
     {
         SubscribeLocalEvent<PhysiologyComponent, GetVerbsEvent<AlternativeVerb>>(OnVerbs);
         SubscribeLocalEvent<PhysiologyComponent, MedicalSurgeryDoAfterEvent>(OnComplete);
         SubscribeLocalEvent<PhysiologyComponent, DoAfterAttemptEvent<MedicalSurgeryDoAfterEvent>>(OnAttempt);
+        SubscribeLocalEvent<MedicalSurgeryToolComponent, AfterInteractEvent>(OnToolInteract);
+        SubscribeLocalEvent<OrganComponent, AfterInteractEvent>(OnOrganInteract);
     }
+
+    private void OnToolInteract(Entity<MedicalSurgeryToolComponent> ent, ref AfterInteractEvent args)
+    {
+        if (args.Handled || !args.CanReach || args.Target is not { } patient
+            || !CanOperate(patient, args.User, ent, out var table)
+            || _targeting.SelectedPart(args.User, patient) is not { } part
+            || !TryComp<MedicalWoundComponent>(part, out var wound))
+            return;
+
+        var action = ent.Comp.Action;
+        if (action == MedicalSurgeryAction.Retract)
+            action = wound.BoneAccess == 2 ? MedicalSurgeryAction.ApproximateBone
+                : wound.RequiresBoneAccess && wound.BoneAccess == 1 ? MedicalSurgeryAction.SpreadBone
+                : wound.SurgicalAccess == 3 ? MedicalSurgeryAction.Approximate : MedicalSurgeryAction.Retract;
+        if (action == MedicalSurgeryAction.RepairFracture && wound.BoneAccess == 1)
+            action = MedicalSurgeryAction.RepairBone;
+
+        // Extraction of several exposed organs is deliberately explicit in the debug panel.
+        EntityUid? selected = null;
+        if (action == MedicalSurgeryAction.Extract)
+        {
+            foreach (var organ in _body.EnumerateOrgans<OrganComponent>(patient))
+            {
+                if (!TryComp<ChildOrganComponent>(organ.Owner, out var child) || child.Parent != part)
+                    continue;
+                if (selected != null)
+                {
+                    _popup.PopupEntity(Loc.GetString("medical-surgery-select-organ"), patient, args.User);
+                    args.Handled = true;
+                    return;
+                }
+                selected = organ.Owner;
+            }
+        }
+        var ev = new MedicalSurgeryDoAfterEvent(GetNetEntity(part), GetNetEntity(table),
+            selected is { } uid ? GetNetEntity(uid) : null, action, wound.SurgeryRevision);
+        args.Handled = true;
+        if (Validate(patient, args.User, ent, ev))
+            Start(patient, args.User, ent, ev);
+        else
+            _popup.PopupEntity(PanelRequirement(patient, args.User, ent, ev) ?? Loc.GetString("medical-panel-require-changed"), patient, args.User);
+    }
+
+    private void OnOrganInteract(Entity<OrganComponent> ent, ref AfterInteractEvent args)
+    {
+        if (args.Handled || !args.CanReach || args.Target is not { } patient
+            || !CanOperate(patient, args.User, ent, out var table)
+            || _targeting.SelectedPart(args.User, patient) is not { } part
+            || !TryComp<MedicalWoundComponent>(part, out var wound))
+            return;
+        var ev = new MedicalSurgeryDoAfterEvent(GetNetEntity(part), GetNetEntity(table), GetNetEntity(ent.Owner),
+            MedicalSurgeryAction.Insert, wound.SurgeryRevision);
+        args.Handled = true;
+        Start(patient, args.User, ent, ev);
+    }
+
+    private static bool ToolSupports(MedicalSurgeryToolComponent tool, MedicalSurgeryAction action)
+        => tool.Action == action || tool.Action == MedicalSurgeryAction.Retract
+            && action is MedicalSurgeryAction.Approximate or MedicalSurgeryAction.SpreadBone or MedicalSurgeryAction.ApproximateBone
+            || tool.Action == MedicalSurgeryAction.RepairFracture && action == MedicalSurgeryAction.RepairBone;
 
     private void OnVerbs(Entity<PhysiologyComponent> ent, ref GetVerbsEvent<AlternativeVerb> args)
     {
@@ -59,7 +123,11 @@ public sealed class MedicalSurgerySystem : EntitySystem
                     }
                 }
                 else
-                    AddVerb(ent, user, tool, table, part, surgical.Action, null, args.Verbs);
+                {
+                    foreach (var action in Enum.GetValues<MedicalSurgeryAction>())
+                        if (ToolSupports(surgical, action))
+                            AddVerb(ent, user, tool, table, part, action, null, args.Verbs);
+                }
             }
             else if (HasComp<OrganComponent>(tool))
                 AddVerb(ent, user, tool, table, part, MedicalSurgeryAction.Insert, tool, args.Verbs);
@@ -107,7 +175,7 @@ public sealed class MedicalSurgerySystem : EntitySystem
             return false;
 
         if (ev.Action != MedicalSurgeryAction.Insert
-            && (!TryComp<MedicalSurgeryToolComponent>(used, out var surgical) || surgical.Action != ev.Action
+            && (!TryComp<MedicalSurgeryToolComponent>(used, out var surgical) || !ToolSupports(surgical, ev.Action)
                 || surgical.Delay <= TimeSpan.Zero))
             return false;
 
@@ -120,7 +188,17 @@ public sealed class MedicalSurgerySystem : EntitySystem
             case MedicalSurgeryAction.Retract:
                 return wound.SurgicalAccess == 2 && wound.Bleeding <= 0f;
             case MedicalSurgeryAction.Close:
-                return wound.SurgicalAccess > 0 && wound.Bleeding <= 0f;
+                return wound.SurgicalAccess is 1 or 2 && wound.BoneAccess == 0 && wound.Bleeding <= 0f;
+            case MedicalSurgeryAction.Approximate:
+                return wound.SurgicalAccess == 3 && wound.BoneAccess == 0 && wound.Bleeding <= 0f;
+            case MedicalSurgeryAction.SawBone:
+                return wound.RequiresBoneAccess && wound.SurgicalAccess == 3 && wound.BoneAccess == 0 && wound.Bleeding <= 0f;
+            case MedicalSurgeryAction.SpreadBone:
+                return wound.SurgicalAccess == 3 && wound.BoneAccess == 1 && wound.Bleeding <= 0f;
+            case MedicalSurgeryAction.ApproximateBone:
+                return wound.SurgicalAccess == 3 && wound.BoneAccess == 2 && wound.Bleeding <= 0f;
+            case MedicalSurgeryAction.RepairBone:
+                return wound.SurgicalAccess == 3 && wound.BoneAccess == 1 && wound.Bleeding <= 0f;
             case MedicalSurgeryAction.RepairFracture:
                 return wound.SurgicalAccess == 3 && wound.Bleeding <= 0f && wound.Fractured;
             case MedicalSurgeryAction.RepairVessel:
@@ -128,12 +206,12 @@ public sealed class MedicalSurgerySystem : EntitySystem
             case MedicalSurgeryAction.RepairProsthetic:
                 return wound.Prosthetic && wound.Injury.GetTotal() > 0;
             case MedicalSurgeryAction.Extract:
-                return wound.SurgicalAccess == 3 && wound.Bleeding <= 0f && ev.Organ is { } extraction
+                return wound.InternalsExposed && wound.Bleeding <= 0f && ev.Organ is { } extraction
                     && TryComp<OrganComponent>(GetEntity(extraction), out var organ) && organ.Body == patient
                     && !TerminatingOrDeleted(GetEntity(extraction))
                     && TryComp<ChildOrganComponent>(GetEntity(extraction), out var child) && child.Parent == GetEntity(ev.Part);
             case MedicalSurgeryAction.Insert:
-                if (wound.SurgicalAccess != 3 || wound.Bleeding > 0f || ev.Organ != GetNetEntity(used)
+                if (!wound.InternalsExposed || wound.Bleeding > 0f || ev.Organ != GetNetEntity(used)
                     || !TryComp<OrganComponent>(used, out var replacement) || replacement.Body != null
                     || site.Category is not { } category || replacement.Category is not { } slot
                     || !_initialBody.SupportsRelationship(patient, category, slot)
@@ -145,7 +223,96 @@ public sealed class MedicalSurgerySystem : EntitySystem
         }
     }
 
-    private void Start(EntityUid patient, EntityUid user, EntityUid tool, MedicalSurgeryDoAfterEvent ev)
+    public void AddPanelOperations(EntityUid patient, EntityUid user, EntityUid part, EntityUid? tool,
+        List<MedicalPanelOperation> operations)
+    {
+        if (!TryComp<MedicalWoundComponent>(part, out var wound))
+            return;
+        foreach (var action in Enum.GetValues<MedicalSurgeryAction>())
+        {
+            if (action == MedicalSurgeryAction.Extract)
+            {
+                if (!wound.InternalsExposed)
+                    continue;
+                foreach (var organ in _body.EnumerateOrgans<OrganComponent>(patient))
+                {
+                    if (TryComp<ChildOrganComponent>(organ.Owner, out var child) && child.Parent == part)
+                        Add(action, organ.Owner);
+                }
+            }
+            else
+                Add(action, action == MedicalSurgeryAction.Insert ? tool : null);
+        }
+
+        void Add(MedicalSurgeryAction action, EntityUid? organ)
+        {
+            var table = TryComp<BuckleComponent>(patient, out var buckle) ? buckle.BuckledTo : null;
+            var ev = new MedicalSurgeryDoAfterEvent(GetNetEntity(part), table is { } t ? GetNetEntity(t) : default,
+                organ is { } o ? GetNetEntity(o) : null, action, wound.SurgeryRevision);
+            operations.Add(new MedicalPanelOperation
+            {
+                Label = Loc.GetString("medical-surgery-step", ("action", action.ToString()),
+                    ("part", Comp<OrganComponent>(part).Category?.Id ?? "Unknown"),
+                    ("organ", organ is { } uid && TryComp<OrganComponent>(uid, out var component) ? component.Category?.Id ?? "Unknown" : "")),
+                Tool = tool is { } used ? GetNetEntity(used) : default,
+                Surgery = ev,
+                Requirement = PanelRequirement(patient, user, tool, ev),
+            });
+        }
+    }
+
+    private string? PanelRequirement(EntityUid patient, EntityUid user, EntityUid? tool, MedicalSurgeryDoAfterEvent ev)
+    {
+        string Reason(string key) => Loc.GetString("medical-panel-require-" + key);
+        if (patient == user)
+            return Reason("other");
+        if (!TryComp<BuckleComponent>(patient, out var buckle) || buckle.BuckledTo is not { } table
+            || !HasComp<MedicalOperatingTableComponent>(table))
+            return Reason("table");
+        if (tool is not { } used || !_hands.IsHolding(user, used, out _))
+            return Reason("tool");
+        if (ev.Action == MedicalSurgeryAction.Insert)
+        {
+            if (!HasComp<OrganComponent>(used))
+                return Reason("replacement");
+        }
+        else if (!TryComp<MedicalSurgeryToolComponent>(used, out var surgical) || !ToolSupports(surgical, ev.Action))
+            return Loc.GetString("medical-panel-require-instrument", ("action", ev.Action.ToString()));
+        if (!CanOperate(patient, user, used, out _))
+            return Reason("interact");
+        if (Validate(patient, user, used, ev))
+            return null;
+        var wound = Comp<MedicalWoundComponent>(GetEntity(ev.Part));
+        if (ev.Action == MedicalSurgeryAction.RepairProsthetic)
+            return Reason("prosthetic");
+        if (ev.Action == MedicalSurgeryAction.Incise)
+            return Reason("closed");
+        if (ev.Action == MedicalSurgeryAction.Clamp)
+            return Reason("incised");
+        if (wound.Bleeding > 0f)
+            return Reason("bleeding");
+        if (ev.Action is MedicalSurgeryAction.SawBone or MedicalSurgeryAction.SpreadBone
+            or MedicalSurgeryAction.ApproximateBone or MedicalSurgeryAction.RepairBone or MedicalSurgeryAction.Approximate
+            || ev.Action == MedicalSurgeryAction.Close && (wound.SurgicalAccess == 3 || wound.BoneAccess != 0))
+            return Reason("layers");
+        if (ev.Action == MedicalSurgeryAction.Retract)
+            return Reason("clamped");
+        if (ev.Action == MedicalSurgeryAction.Close)
+            return Reason("open");
+        if (wound.SurgicalAccess != 3)
+            return Reason("exposed");
+        if (ev.Action == MedicalSurgeryAction.Insert && tool is { } replacement && !_viability.Viable(replacement))
+            return Reason("nonviable");
+        return Reason(ev.Action switch
+        {
+            MedicalSurgeryAction.RepairFracture => "fracture",
+            MedicalSurgeryAction.RepairVessel => "vessel",
+            MedicalSurgeryAction.Insert => "compatible",
+            _ => "changed",
+        });
+    }
+
+    public void Start(EntityUid patient, EntityUid user, EntityUid tool, MedicalSurgeryDoAfterEvent ev)
     {
         if (!Validate(patient, user, tool, ev))
             return;
@@ -186,6 +353,21 @@ public sealed class MedicalSurgerySystem : EntitySystem
                 break;
             case MedicalSurgeryAction.Close:
                 wound.SurgicalAccess = 0;
+                break;
+            case MedicalSurgeryAction.Approximate:
+                wound.SurgicalAccess = 2;
+                break;
+            case MedicalSurgeryAction.SawBone:
+                wound.BoneAccess = 1;
+                break;
+            case MedicalSurgeryAction.SpreadBone:
+                wound.BoneAccess = 2;
+                break;
+            case MedicalSurgeryAction.ApproximateBone:
+                wound.BoneAccess = 1;
+                break;
+            case MedicalSurgeryAction.RepairBone:
+                wound.BoneAccess = 0;
                 break;
             case MedicalSurgeryAction.RepairFracture:
                 _wounds.RepairFracture(ent, wound);

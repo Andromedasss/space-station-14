@@ -20,6 +20,15 @@ public sealed partial class MedicalWoundComponent : Component
     [DataField]
     public int SurgicalAccess;
 
+    // 0: intact, 1: sawn, 2: spread. Separate from traumatic fractures.
+    [DataField]
+    public int BoneAccess;
+
+    [DataField]
+    public bool RequiresBoneAccess;
+
+    public bool InternalsExposed => SurgicalAccess == 3 && (!RequiresBoneAccess || BoneAccess == 2);
+
     public int SurgeryRevision;
 
     /// <summary>
@@ -48,6 +57,18 @@ public sealed partial class MedicalWoundComponent : Component
 
     [DataField]
     public float VascularThreshold = 40f;
+
+    [DataField]
+    public float CrushVascularThreshold = 120f;
+
+    [DataField]
+    public float CrushSkinThreshold = 160f;
+
+    [DataField]
+    public float CrushVascularTransfer = 0.5f;
+
+    [DataField]
+    public float CrushBleedingTransfer = 0.05f;
 
     [DataField]
     public float InternalBleedingPerDamage = 0.02f;

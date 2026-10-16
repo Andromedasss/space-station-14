@@ -15,6 +15,11 @@ public enum MedicalSurgeryAction : byte
     RepairFracture,
     RepairVessel,
     RepairProsthetic,
+    Approximate,
+    SawBone,
+    SpreadBone,
+    ApproximateBone,
+    RepairBone,
 }
 
 [Serializable, NetSerializable]

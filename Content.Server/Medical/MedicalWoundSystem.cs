@@ -104,8 +104,9 @@ public sealed class MedicalWoundSystem : EntitySystem
         {
             if (amount > 0 && part is { } hit && hit.Comp2.BleedingPerDamage.TryGetValue(type, out var coefficient))
             {
-                hit.Comp2.Injury.DamageDict[type] = hit.Comp2.Injury.DamageDict.GetValueOrDefault(type) + amount;
-                if (!hit.Comp2.Prosthetic && type == "Blunt" && (hit.Comp1.Category?.Id is "ArmLeft" or "ArmRight" or "HandLeft" or "HandRight"
+                var previousInjury = hit.Comp2.Injury.DamageDict.GetValueOrDefault(type);
+                hit.Comp2.Injury.DamageDict[type] = previousInjury + amount;
+                if (!hit.Comp2.Prosthetic && type == "Blunt" && (hit.Comp1.Category?.Id is "Head" or "ArmLeft" or "ArmRight" or "HandLeft" or "HandRight"
                         or "LegLeft" or "LegRight" or "FootLeft" or "FootRight")
                     && float.IsFinite(hit.Comp2.FractureThreshold) && hit.Comp2.FractureThreshold > 0f
                     && hit.Comp2.Injury.DamageDict[type] >= FixedPoint2.New(hit.Comp2.FractureThreshold))
@@ -113,11 +114,36 @@ public sealed class MedicalWoundSystem : EntitySystem
                 if (!hit.Comp2.Prosthetic && type == "Piercing" && float.IsFinite(hit.Comp2.VascularThreshold) && hit.Comp2.VascularThreshold > 0f)
                     hit.Comp2.VascularDamage = Math.Clamp(hit.Comp2.VascularDamage
                         + Math.Max(0f, amount.Float() - hit.Comp2.VascularThreshold), 0f, 100f);
+                var crushBleeding = 0f;
+                if (!hit.Comp2.Prosthetic && type == "Blunt")
+                {
+                    var deep = PhysiologyModel.NewlyExposedDamage(previousInjury.Float(), amount.Float(), hit.Comp2.CrushVascularThreshold);
+                    var skin = PhysiologyModel.NewlyExposedDamage(previousInjury.Float(), amount.Float(), hit.Comp2.CrushSkinThreshold);
+                    if (float.IsFinite(hit.Comp2.CrushVascularTransfer))
+                        hit.Comp2.VascularDamage = Math.Clamp(hit.Comp2.VascularDamage
+                            + deep * Math.Clamp(hit.Comp2.CrushVascularTransfer, 0f, 1f), 0f, 100f);
+                    if (float.IsFinite(hit.Comp2.CrushBleedingTransfer))
+                        crushBleeding = skin * Math.Clamp(hit.Comp2.CrushBleedingTransfer, 0f, 1f);
+                }
                 if (!hit.Comp2.Prosthetic && TryComp<BloodstreamComponent>(ent, out var blood))
                     hit.Comp2.Bleeding += Math.Min(Math.Max(0f, blood.MaxBleedAmount - TotalBleeding(ent)),
-                        Math.Max(0f, amount.Float() * coefficient));
+                        Math.Max(0f, amount.Float() * coefficient + crushBleeding));
                 if (TryComp<PhysiologyStateComponent>(ent, out var state))
                     _physiology.Record(state, $"WOUND {hit.Comp1.Category}: {type} +{amount}; source={args.Origin}");
+                if (!hit.Comp2.Prosthetic && hit.Comp1.Category?.Id == "Head")
+                {
+                    foreach (var brain in _body.EnumerateOrgans<CerebralHealthComponent>(ent.Owner))
+                    {
+                        if (!TryComp<ChildOrganComponent>(brain.Owner, out var child) || child.Parent != hit.Owner)
+                            continue;
+                        var trauma = PhysiologyModel.HeadTrauma(type.Id, previousInjury.Float(), amount.Float());
+                        if (trauma <= 0f)
+                            continue;
+                        brain.Comp2.Damage = Math.Clamp(brain.Comp2.Damage + trauma, 0f, PhysiologyModel.MaximumBrainDamage);
+                        if (TryComp<PhysiologyStateComponent>(ent, out var history))
+                            _physiology.Record(history, $"BRAIN mechanical trauma +{trauma:F2}; injury={brain.Comp2.Damage:F2}");
+                    }
+                }
                 foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>(ent.Owner))
                 {
                     var medical = organ.Comp2;
@@ -127,9 +153,14 @@ public sealed class MedicalWoundSystem : EntitySystem
                         || !float.IsFinite(medical.TraumaThreshold) || medical.TraumaThreshold < 0f)
                         continue;
 
-                    var trauma = Math.Max(0f, amount.Float() - medical.TraumaThreshold) * transfer;
+                    var trauma = (type == "Blunt"
+                        ? PhysiologyModel.NewlyExposedDamage(previousInjury.Float(), amount.Float(), medical.TraumaThreshold)
+                        : Math.Max(0f, amount.Float() - medical.TraumaThreshold)) * transfer;
                     var previous = medical.Trauma;
                     medical.Trauma = Math.Clamp(previous + trauma, 0f, 100f);
+                    if (medical.Kind == MedicalOrganKind.Intestines && medical.Trauma >= 60f
+                        && trauma > 0f && type.Id is "Piercing" or "Slash")
+                        medical.Perforated = true;
                     if (medical.Trauma != previous && TryComp<PhysiologyStateComponent>(ent, out var history))
                         _physiology.Record(history, $"ORGAN {medical.Kind}: trauma {previous:F2} -> {medical.Trauma:F2}");
                 }
@@ -391,6 +422,7 @@ public sealed class MedicalWoundSystem : EntitySystem
             part.Comp2.Injury = new DamageSpecifier();
             part.Comp2.Bleeding = 0f;
             part.Comp2.SurgicalAccess = 0;
+            part.Comp2.BoneAccess = 0;
             part.Comp2.Fractured = false;
             part.Comp2.VascularDamage = 0f;
             part.Comp2.IschemiaDebt = 0f;
@@ -407,6 +439,7 @@ public sealed class MedicalWoundSystem : EntitySystem
         ent.Comp.Injury = new DamageSpecifier();
         ent.Comp.Bleeding = 0f;
         ent.Comp.SurgicalAccess = 0;
+        ent.Comp.BoneAccess = 0;
         ent.Comp.Fractured = false;
         ent.Comp.VascularDamage = 0f;
         ent.Comp.IschemiaDebt = 0f;

@@ -8,12 +8,16 @@ public sealed partial class InternalTraumaTreatmentDoAfterEvent : DoAfterEvent
 {
     public NetEntity Organ;
     public NetEntity Table;
+    public NetEntity Part;
+    public int Revision;
 
-    public InternalTraumaTreatmentDoAfterEvent(NetEntity organ, NetEntity table)
+    public InternalTraumaTreatmentDoAfterEvent(NetEntity organ, NetEntity table, NetEntity part, int revision)
     {
         Organ = organ;
         Table = table;
+        Part = part;
+        Revision = revision;
     }
 
-    public override DoAfterEvent Clone() => new InternalTraumaTreatmentDoAfterEvent(Organ, Table);
+    public override DoAfterEvent Clone() => new InternalTraumaTreatmentDoAfterEvent(Organ, Table, Part, Revision);
 }

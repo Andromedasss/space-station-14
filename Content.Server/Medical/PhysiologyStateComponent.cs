@@ -29,6 +29,27 @@ public sealed partial class PhysiologyStateComponent : Component
 
     public float InotropeDose;
 
+    [DataField]
+    public float BreathProgress;
+
+    [DataField]
+    public float RenalWaste;
+
+    [DataField]
+    public float HepaticWaste;
+
+    [DataField]
+    public float Contamination;
+
+    public float KidneyFunction;
+    public float LiverFunction;
+    public float IntestinalFunction;
+    public float Temperature = 310.15f;
+    public float MetabolicDemand = 1f;
+    public float Pulse;
+    public float Systolic;
+    public float Diastolic;
+
     [ViewVariables]
     public float LungFunction;
 

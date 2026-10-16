@@ -163,9 +163,16 @@ public sealed partial class MetabolizerSystem : EntitySystem
             if (ev.Reagents.Contains(reagent))
                 continue;
 
+            var rateEv = new MetabolismRateEvent(stage.Id, reagent.Prototype);
+            if (ent.Comp2?.Body is { } attachedBody)
+                RaiseLocalEvent(attachedBody, ref rateEv);
+            var rateMultiplier = float.IsFinite(rateEv.Multiplier) ? Math.Clamp(rateEv.Multiplier, 0f, 2f) : 1f;
+            if (rateMultiplier <= 0f)
+                continue;
+
             if (proto.Metabolisms is null || !proto.Metabolisms.Metabolisms.TryGetValue(stage, out var entry))
             {
-                var mostToTransfer = FixedPoint2.Clamp(solutionData.TransferRate, 0, quantity);
+                var mostToTransfer = FixedPoint2.Clamp(solutionData.TransferRate * rateMultiplier, 0, quantity);
 
                 if (transferSolution is not null)
                 {
@@ -174,7 +181,7 @@ public sealed partial class MetabolizerSystem : EntitySystem
                 }
                 else
                 {
-                    solution.RemoveReagent(reagent, FixedPoint2.New(1));
+                    solution.RemoveReagent(reagent, FixedPoint2.New(rateMultiplier));
                 }
 
                 continue;
@@ -183,7 +190,7 @@ public sealed partial class MetabolizerSystem : EntitySystem
             var rate = solutionData.MetabolizeAll ? quantity : entry.MetabolismRate;
 
             // Remove $rate, as long as there's enough reagent there to actually remove that much
-            var mostToRemove = FixedPoint2.Clamp(rate, 0, quantity);
+            var mostToRemove = FixedPoint2.Clamp(rate * rateMultiplier, 0, quantity);
 
             // we're done here entirely if this is true
             if (reagents >= ent.Comp1.MaxReagentsProcessable)

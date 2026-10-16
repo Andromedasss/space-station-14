@@ -29,6 +29,139 @@ public sealed class MedicalWoundTest : GameTest
 {
     [Test]
     [RunOnSide(Side.Server)]
+    public void AbdominalOrgansArePhysicalPairedAndSeparateFromChestTrauma()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var parts = body.EnumerateOrgans<MedicalWoundComponent>(patient).ToArray();
+        Assert.That(parts, Has.Length.EqualTo(12));
+        var abdomen = parts.Single(p => p.Comp1.Category?.Id == "Abdomen");
+        var organs = body.EnumerateOrgans<MedicalOrganComponent>(patient).ToArray();
+        Assert.That(body.EnumerateOrgans<OrganComponent>(patient).Any(p => p.Comp1.Category?.Id == "Kidneys"), Is.False,
+            "The paired experimental kidneys must replace the upstream combined organ.");
+        Assert.That(organs.Count(p => p.Comp2.Kind == MedicalOrganKind.Kidney), Is.EqualTo(2));
+        foreach (var organ in organs.Where(p => p.Comp2.ProtectedBy == "Abdomen"))
+            Assert.That(SEntMan.GetComponent<ChildOrganComponent>(organ.Owner).Parent, Is.EqualTo(abdomen.Owner));
+        SEntMan.System<MedicalWoundSystem>().TryInjure(patient, "Abdomen", "Piercing", 60f);
+        Assert.That(organs.All(p => p.Comp2.Trauma == (p.Comp2.ProtectedBy == "Abdomen" ? 40f : 0f)), Is.True);
+        Assert.That(SEntMan.System<PhysiologySystem>().Scan(patient)!.OrganFunctions
+            .Single(p => p.Category == "KidneyLeft").Trauma, Is.EqualTo(60f).Within(0.001f));
+        var containers = SEntMan.System<SharedContainerSystem>();
+        var kidney = organs.Single(p => p.Comp1.Category?.Id == "KidneyLeft");
+        Assert.That(containers.Remove(kidney.Owner, containers.GetContainer(patient, BodyComponent.ContainerID)), Is.True);
+        Assert.That(body.EnumerateOrgans<MedicalOrganComponent>(patient).Count(p => p.Comp2.Kind == MedicalOrganKind.Kidney), Is.EqualTo(1));
+        Assert.That(containers.Insert(kidney.Owner, containers.GetContainer(patient, BodyComponent.ContainerID)), Is.True);
+        Assert.That(SEntMan.GetComponent<ChildOrganComponent>(kidney.Owner).Parent, Is.EqualTo(abdomen.Owner));
+        Assert.That(kidney.Comp2.Trauma, Is.EqualTo(40f));
+    }
+
+    [TestCase("ArmLeft")]
+    [TestCase("ArmRight")]
+    [TestCase("HandLeft")]
+    [TestCase("HandRight")]
+    [TestCase("LegLeft")]
+    [TestCase("LegRight")]
+    [TestCase("FootLeft")]
+    [TestCase("FootRight")]
+    [RunOnSide(Side.Server)]
+    public void RepeatedCrushingHitsCauseDeepThenExternalBleeding(string category)
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var wounds = SEntMan.System<MedicalWoundSystem>();
+        var part = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(patient)
+            .Single(p => p.Comp1.Category?.Id == category);
+        for (var i = 0; i < 12; i++)
+            wounds.TryInjure(patient, category, "Blunt", 10f);
+        Assert.That(part.Comp2.Fractured, Is.True);
+        Assert.That(part.Comp2.VascularDamage, Is.Zero);
+        Assert.That(part.Comp2.Bleeding, Is.Zero);
+        wounds.TryInjure(patient, category, "Blunt", 10f);
+        Assert.That(part.Comp2.VascularDamage, Is.EqualTo(5f));
+        Assert.That(MedicalWoundSystem.InternalBleeding(part.Comp2), Is.EqualTo(0.1f).Within(0.001f));
+        Assert.That(part.Comp2.Bleeding, Is.Zero);
+        for (var i = 0; i < 4; i++)
+            wounds.TryInjure(patient, category, "Blunt", 10f);
+        Assert.That(part.Comp2.VascularDamage, Is.EqualTo(25f));
+        Assert.That(part.Comp2.Bleeding, Is.EqualTo(0.5f));
+        SEntMan.System<BloodstreamSystem>().TryModifyBleedAmount(patient, -10f);
+        SEntMan.System<DamageableSystem>().TryChangeDamage(patient,
+            new DamageSpecifier { DamageDict = { ["Blunt"] = FixedPoint2.New(-170) } }, true, targetPart: part.Owner);
+        Assert.That(part.Comp2.Injury.GetTotal(), Is.EqualTo(FixedPoint2.Zero));
+        Assert.That(part.Comp2.Bleeding, Is.Zero);
+        Assert.That(part.Comp2.VascularDamage, Is.EqualTo(25f));
+        Assert.That(part.Comp2.Fractured, Is.True);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void RepeatedTorsoHitsAccumulateOrganTraumaWithoutAffectingOtherZones()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var wounds = SEntMan.System<MedicalWoundSystem>();
+        var organs = SEntMan.System<BodySystem>().EnumerateOrgans<MedicalOrganComponent>(patient).ToArray();
+        for (var i = 0; i < 10; i++)
+            wounds.TryInjure(patient, "LegLeft", "Blunt", 10f);
+        Assert.That(organs.All(o => o.Comp2.Trauma == 0f), Is.True);
+        for (var i = 0; i < 2; i++)
+            wounds.TryInjure(patient, "Torso", "Blunt", 10f);
+        Assert.That(organs.All(o => o.Comp2.Trauma == 0f), Is.True);
+        for (var i = 0; i < 8; i++)
+            wounds.TryInjure(patient, "Torso", "Blunt", 10f);
+        Assert.That(organs.All(o => o.Comp2.Trauma == (o.Comp2.ProtectedBy == "Torso" ? 40f : 0f)), Is.True);
+        var scan = SEntMan.System<PhysiologySystem>().Scan(patient)!;
+        Assert.That(scan.HeartFunction, Is.EqualTo(0.6f).Within(0.001f));
+        Assert.That(scan.LungFunction, Is.EqualTo(0.6f).Within(0.001f));
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void RepeatedHeadHitsFractureSkullAndKillPhysicalBrainBeforeGibbing()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var wounds = SEntMan.System<MedicalWoundSystem>();
+        var body = SEntMan.System<BodySystem>();
+        var head = body.EnumerateOrgans<MedicalWoundComponent>(patient).Single(p => p.Comp1.Category?.Id == "Head");
+        var brain = body.EnumerateOrgans<CerebralHealthComponent>(patient).Single();
+        for (var i = 0; i < 6; i++)
+            Assert.That(wounds.TryInjure(patient, "Head", "Blunt", 10f), Is.True);
+        Assert.That(head.Comp2.Fractured, Is.True);
+        Assert.That(brain.Comp2.Damage, Is.EqualTo(10f));
+        Assert.That(SEntMan.System<PhysiologySystem>().Scan(patient)!.Fractures, Does.Contain("Head"));
+        for (var i = 0; i < 8; i++)
+            wounds.TryInjure(patient, "Head", "Blunt", 10f);
+        SEntMan.System<PhysiologySystem>().Update(0f);
+        Assert.That(brain.Comp2.Damage, Is.EqualTo(50f));
+        Assert.That(SEntMan.System<MobStateSystem>().IsCritical(patient), Is.True);
+        for (var i = 0; i < 10; i++)
+            wounds.TryInjure(patient, "Head", "Blunt", 10f);
+        SEntMan.System<PhysiologySystem>().Update(0f);
+        Assert.That(brain.Comp2.Damage, Is.EqualTo(100f));
+        Assert.That(SEntMan.System<MobStateSystem>().IsDead(patient), Is.True);
+        SEntMan.System<DamageableSystem>().TryChangeDamage(patient,
+            new DamageSpecifier { DamageDict = { ["Blunt"] = FixedPoint2.New(-240) } }, true, targetPart: head.Owner);
+        Assert.That(brain.Comp2.Damage, Is.EqualTo(100f), "Healing scalp tissue cannot repair the physical brain.");
+        Assert.That(head.Comp2.Fractured, Is.True);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void HeadTraumaDoesNotReachAnotherBrainOrComeFromLimbDamage()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var donor = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var brain = body.EnumerateOrgans<CerebralHealthComponent>(patient).Single();
+        var otherBrain = body.EnumerateOrgans<CerebralHealthComponent>(donor).Single();
+        var wounds = SEntMan.System<MedicalWoundSystem>();
+        wounds.TryInjure(patient, "ArmLeft", "Blunt", 100f);
+        Assert.That(brain.Comp2.Damage, Is.Zero);
+        wounds.TryInjure(patient, "Head", "Piercing", 30f);
+        Assert.That(brain.Comp2.Damage, Is.EqualTo(20f));
+        Assert.That(otherBrain.Comp2.Damage, Is.Zero);
+    }
+
+    [Test]
+    [RunOnSide(Side.Server)]
     public void SystemicHealingRepairsBiologicalInjuryButNotProstheticDamage()
     {
         var patient = SSpawn("MobMedicalTestHuman");
@@ -269,7 +402,7 @@ public sealed class MedicalWoundTest : GameTest
         var blood = SEntMan.System<BloodstreamSystem>();
         var stream = SComp<BloodstreamComponent>(patient);
         var parts = body.EnumerateOrgans<MedicalWoundComponent>(patient).ToArray();
-        Assert.That(parts, Has.Length.EqualTo(10));
+        Assert.That(parts, Has.Length.EqualTo(12));
         var leg = parts.Single(p => p.Comp1.Category?.Id == "LegLeft");
         Assert.That(wounds.TryInjure(patient, "LegLeft", "Slash", 20f), Is.True);
         Assert.That(leg.Comp2.Injury.DamageDict["Slash"], Is.EqualTo(FixedPoint2.New(20)));
@@ -520,7 +653,7 @@ public sealed class MedicalWoundTest : GameTest
         var leg = body.EnumerateOrgans<MedicalWoundComponent>(donor).Single(p => p.Comp1.Category?.Id == "LegLeft");
         var foot = body.EnumerateOrgans<MedicalWoundComponent>(donor).Single(p => p.Comp1.Category?.Id == "FootLeft");
         var oldLeg = body.EnumerateOrgans<MedicalWoundComponent>(recipient).Single(p => p.Comp1.Category?.Id == "LegLeft");
-        var torso = body.EnumerateOrgans<MedicalWoundComponent>(recipient).Single(p => p.Comp1.Category?.Id == "Torso");
+        var groin = body.EnumerateOrgans<MedicalWoundComponent>(recipient).Single(p => p.Comp1.Category?.Id == "Groin");
         SEntMan.System<MedicalWoundSystem>().TryInjure(donor, "FootLeft", "Piercing", 10f);
 
         Assert.That(containers.Remove(leg.Owner, donorContainer), Is.True);
@@ -535,9 +668,9 @@ public sealed class MedicalWoundTest : GameTest
         Assert.That(containers.Remove(oldLeg.Owner, recipientContainer), Is.True);
         Assert.That(containers.Insert(leg.Owner, recipientContainer), Is.True);
         Assert.That(foot.Comp1.Body, Is.EqualTo(recipient));
-        Assert.That(SComp<ChildOrganComponent>(leg.Owner).Parent, Is.EqualTo(torso.Owner));
+        Assert.That(SComp<ChildOrganComponent>(leg.Owner).Parent, Is.EqualTo(groin.Owner));
         Assert.That(SComp<ChildOrganComponent>(foot.Owner).Parent, Is.EqualTo(leg.Owner));
-        Assert.That(body.EnumerateOrgans<MedicalWoundComponent>(recipient).Count(), Is.EqualTo(10));
+        Assert.That(body.EnumerateOrgans<MedicalWoundComponent>(recipient).Count(), Is.EqualTo(12));
         Assert.That(foot.Comp2.Injury.GetTotal(), Is.EqualTo(FixedPoint2.New(10)));
         Assert.That(SEntMan.System<DamageableSystem>().GetAllDamage(recipient).DamageDict["Piercing"], Is.EqualTo(FixedPoint2.New(10)));
 

@@ -98,6 +98,7 @@ public abstract partial class SharedSolutionContainerSystem : EntitySystem
         SubscribeLocalEvent<ExaminableSolutionComponent, GetVerbsEvent<ExamineVerb>>(OnSolutionExaminableVerb);
 
         SubscribeLocalEvent<SolutionManagerComponent, MapInitEvent>(OnManagerInit);
+        SubscribeLocalEvent<SolutionManagerComponent, ComponentStartup>(OnManagerStartup);
         SubscribeLocalEvent<SolutionManagerComponent, ComponentShutdown>(OnManagerShutdown);
         SubscribeLocalEvent<SolutionManagerComponent, EntInsertedIntoContainerMessage>(OnSolutionAdded);
         SubscribeLocalEvent<SolutionManagerComponent, EntRemovedFromContainerMessage>(OnSolutionRemoved);
@@ -1087,25 +1088,40 @@ public abstract partial class SharedSolutionContainerSystem : EntitySystem
             ContainerSystem.ShutdownContainer(solutionContainer);
     }
 
+    private void OnManagerStartup(Entity<SolutionManagerComponent> entity, ref ComponentStartup args)
+    {
+        // Map loading restores containment without insertion events. Rebuild the nonserialized cache.
+        if (!ContainerSystem.TryGetContainer(entity, entity.Comp.Container, out var container))
+            return;
+        foreach (var uid in container.ContainedEntities)
+            if (SolutionQuery.TryComp(uid, out var solution))
+                CacheSolution(entity, (uid, solution));
+    }
+
     private void OnSolutionAdded(Entity<SolutionManagerComponent> entity, ref EntInsertedIntoContainerMessage args)
     {
         // Container networking boilerplate
         if (args.Container.ID != entity.Comp.Container || !SolutionQuery.TryComp(args.Entity, out var solution))
             return;
 
-        // Don't add a solution entity with the same id as this entity's solution if it exists!
-        DebugTools.Assert(!TryComp<SolutionComponent>(entity, out var sol) || sol.Id != solution.Id,
-            $"Tried to add a solution {MetaData(args.Entity).EntityPrototype} {solution.Id} to {ToPrettyString(entity)} but it itself was a solution with a matching id!");
+        CacheSolution(entity, (args.Entity, solution));
+    }
 
-        EnsureComp<ContainedSolutionComponent>(args.Entity, out var contained);
+    private void CacheSolution(Entity<SolutionManagerComponent> entity, Entity<SolutionComponent> solution)
+    {
+        // Don't add a solution entity with the same id as this entity's solution if it exists!
+        DebugTools.Assert(!TryComp<SolutionComponent>(entity, out var sol) || sol.Id != solution.Comp.Id,
+            $"Tried to add a solution {MetaData(solution).EntityPrototype} {solution.Comp.Id} to {ToPrettyString(entity)} but it itself was a solution with a matching id!");
+
+        EnsureComp<ContainedSolutionComponent>(solution, out var contained);
         contained.Container = entity.Owner;
 
         // Throw if we already have a solution with the same ID.
         // We only check on server as we actually want the server to bulldoze any client entities being cached when they come in.
         // Applying state, and first time predicted checks will cause mispredicts until the solution updates
-        DebugTools.Assert(!entity.Comp.Solutions.TryGetValue(solution.Id, out var existing) || existing.Owner == args.Entity || Net.IsClient,
-            $"Solution {ToPrettyString(entity)}, tried to add a solution {ToPrettyString(args.Entity)} with a duplicate id: {solution.Id} {ToPrettyString(existing)}");
-        entity.Comp.Solutions[solution.Id] = (args.Entity, solution);
+        DebugTools.Assert(!entity.Comp.Solutions.TryGetValue(solution.Comp.Id, out var existing) || existing.Owner == solution.Owner || Net.IsClient,
+            $"Solution {ToPrettyString(entity)}, tried to add a solution {ToPrettyString(solution)} with a duplicate id: {solution.Comp.Id} {ToPrettyString(existing)}");
+        entity.Comp.Solutions[solution.Comp.Id] = solution;
     }
 
     private void OnSolutionRemoved(Entity<SolutionManagerComponent> entity, ref EntRemovedFromContainerMessage args)

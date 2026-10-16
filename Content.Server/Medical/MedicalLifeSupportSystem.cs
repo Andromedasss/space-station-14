@@ -3,6 +3,7 @@ using Content.Server.Body.Systems;
 using Content.Server.Power.Components;
 using Content.Shared.Atmos;
 using Content.Shared.Buckle.Components;
+using Content.Shared.Examine;
 using Content.Shared.Medical;
 
 namespace Content.Server.Medical;
@@ -15,6 +16,8 @@ public sealed class MedicalLifeSupportSystem : EntitySystem
     {
         base.Initialize();
         SubscribeLocalEvent<PhysiologyComponent, InhaleLocationEvent>(OnInhale);
+        SubscribeLocalEvent<MedicalLifeSupportComponent, ExaminedEvent>((uid, comp, args) =>
+            args.PushMarkup(Loc.GetString("medical-gas-reservoir", ("moles", comp.GasSupply.TotalMoles.ToString("F2")))));
     }
 
     public MedicalLifeSupportComponent? GetSupport(EntityUid patient)

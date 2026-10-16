@@ -2,6 +2,7 @@ using Content.Server.Administration.Logs;
 using Content.Server.Atmos.EntitySystems;
 using Content.Server.Body.Components;
 using Content.Server.Chat.Systems;
+using Content.Server.Medical;
 using Content.Shared.Body.Systems;
 using Content.Shared.Alert;
 using Content.Shared.Atmos;
@@ -42,6 +43,8 @@ public sealed partial class RespiratorSystem : EntitySystem
     [Dependency] private MobStateSystem _mobState = default!;
     [Dependency] private SharedEntityConditionsSystem _entityConditions = default!;
     [Dependency] private SharedSolutionContainerSystem _solutionContainerSystem = default!;
+    [Dependency] private MedicalSedationSystem _sedation = default!;
+    [Dependency] private MedicalLifeSupportSystem _medicalLifeSupport = default!;
 
     private static readonly ProtoId<MetabolismStagePrototype> RespirationStage = new("Respiration");
 
@@ -96,6 +99,14 @@ public sealed partial class RespiratorSystem : EntitySystem
                 switch (respirator.Status)
                 {
                     case RespiratorStatus.Inhaling:
+                        if (TryComp<PhysiologyStateComponent>(uid, out var physiology) && HasComp<PhysiologyComponent>(uid))
+                        {
+                            var drive = _medicalLifeSupport.GetSupport(uid) != null ? 1f : _sedation.RespiratoryDrive(uid);
+                            physiology.BreathProgress = Math.Min(1f, physiology.BreathProgress + drive);
+                            if (physiology.BreathProgress < 1f)
+                                break;
+                            physiology.BreathProgress -= 1f;
+                        }
                         Inhale((uid, respirator));
                         respirator.Status = RespiratorStatus.Exhaling;
                         break;
@@ -194,6 +205,10 @@ public sealed partial class RespiratorSystem : EntitySystem
             return false;
 
         if (!Resolve(ent, ref ent.Comp))
+            return false;
+
+        if (HasComp<PhysiologyComponent>(ent.Owner) && _sedation.RespiratoryDrive(ent.Owner) <= 0f
+            && _medicalLifeSupport.GetSupport(ent.Owner) == null)
             return false;
 
         return (ent.Comp.Saturation > ent.Comp.SuffocationThreshold);

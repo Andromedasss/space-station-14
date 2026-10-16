@@ -1,4 +1,5 @@
 using Robust.Shared.GameStates;
+using Robust.Shared.Serialization;
 
 namespace Content.Shared.Medical;
 
@@ -10,4 +11,10 @@ public sealed partial class MedicalTargetingComponent : Component
 {
     [DataField, AutoNetworkedField]
     public string Category = "Torso";
+}
+
+[Serializable, NetSerializable]
+public sealed class MedicalTargetZoneEvent(string category) : EntityEventArgs
+{
+    public string Category = category;
 }

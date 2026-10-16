@@ -1,4 +1,87 @@
 # Explicit opt-in: ordinary crew continue using upstream medicine.
+- type: entity
+  parent: Medkit
+  id: MedicalTestOrganCase
+  name: experimental organ preservation case
+  suffix: Experimental Physiology
+  description: Place organs inside to slow storage injury tenfold. A sealed coolant cartridge lasts ten minutes from creation, even when empty. Cannot restore existing damage. Replace the case when exhausted.
+  components:
+  - type: MedicalOrganPreservation
+  - type: Storage
+    maxItemSize: Normal
+    grid:
+    - 0,0,5,3
+
+- type: entity
+  parent: BaseItem
+  id: MedicalTestAmbuBag
+  name: experimental manual resuscitator
+  suffix: Experimental Physiology
+  description: Apply to another experimental patient for one assisted breath after a two-second squeeze. Repeat regularly. Uses a finite air reservoir. Does not replace blood, circulation or damaged lungs.
+  components:
+  - type: Sprite
+    sprite: Objects/Specific/Medical/medical.rsi
+    state: gauze
+  - type: MedicalVentilation
+    gasSupply:
+      volume: 10
+      moles:
+        Oxygen: 2
+        Nitrogen: 8
+      temperature: 293.15
+
+- type: reagent
+  id: MedicalTestSedative
+  name: reagent-name-medical-test-sedative
+  desc: reagent-desc-medical-test-sedative
+  physicalDesc: reagent-physical-desc-translucent
+  group: Medicine
+  flavor: medicine
+  color: "#9586c9"
+  metabolisms:
+    Bloodstream:
+      metabolismRate: 0.1
+      effects: []
+
+- type: entity
+  parent: ChemicalMedipen
+  id: MedicalTestSedativeMedipen
+  name: experimental anesthetic injector
+  suffix: Experimental Physiology
+  description: Delivers 5 units of experimental anesthetic. Causes unconsciousness and suppresses breathing. Monitor oxygen debt and provide assisted ventilation. Not a healing drug.
+  components:
+  - type: Solution
+    solution:
+      reagents:
+      - ReagentId: MedicalTestSedative
+        Quantity: 5
+
+- type: reagent
+  id: MedicalTestAnalgesic
+  name: reagent-name-medical-test-analgesic
+  desc: reagent-desc-medical-test-analgesic
+  physicalDesc: reagent-physical-desc-translucent
+  group: Medicine
+  flavor: medicine
+  color: "#68b5c9"
+  metabolisms:
+    Bloodstream:
+      metabolismRate: 0.1
+      effects: []
+
+- type: entity
+  parent: ChemicalMedipen
+  id: MedicalTestAnalgesicMedipen
+  name: experimental analgesic injector
+  suffix: Experimental Physiology
+  description: Delivers 5 units of non-sedating experimental analgesic. Reduces perceived pain without healing injuries, stopping bleeding or restoring damaged limbs. Extra doses give no additional benefit. Not an anesthetic.
+  components:
+  - type: Solution
+    solution:
+      reagents:
+      - ReagentId: MedicalTestAnalgesic
+        Quantity: 5
+
 - type: reagent
   id: MedicalTestInotrope
   name: reagent-name-medical-test-inotrope
@@ -30,7 +113,7 @@
   id: MedicalTestOperatingTable
   name: experimental operating table
   suffix: Experimental Physiology
-  description: Buckle the patient here for experimental surgery. Use the tool's surgery actions in the patient's context menu.
+  description: Buckle the patient here for experimental surgery. Select a zone in the HUD and apply surgical instruments directly. The surgery panel provides debug operations and organ extraction selection.
   components:
   - type: MedicalOperatingTable
 
@@ -99,6 +182,15 @@
   components:
   - type: MedicalSurgeryTool
     action: Retract
+
+- type: entity
+  parent: SawElectric
+  id: MedicalTestBoneSaw
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalSurgeryTool
+    action: SawBone
+    delay: 8
 
 - type: entity
   parent: Cautery
@@ -172,6 +264,22 @@
       LegRight: OrganMedicalTestLegRight
       FootLeft: OrganMedicalTestFootLeft
       FootRight: OrganMedicalTestFootRight
+      Abdomen: OrganMedicalTestAbdomen
+      Groin: OrganMedicalTestGroin
+      Liver: OrganMedicalTestLiver
+      KidneyLeft: OrganMedicalTestKidneyLeft
+      KidneyRight: OrganMedicalTestKidneyRight
+      Intestines: OrganMedicalTestIntestines
+      Stomach: OrganHumanStomach
+    relationships:
+      Torso: [Head, ArmLeft, ArmRight, Abdomen, Heart, Lungs]
+      Abdomen: [Groin, Liver, KidneyLeft, KidneyRight, Intestines, Stomach, Appendix]
+      Groin: [LegLeft, LegRight]
+      Head: [Brain, Eyes, Tongue, Ears]
+      ArmLeft: [HandLeft]
+      ArmRight: [HandRight]
+      LegLeft: [FootLeft]
+      LegRight: [FootRight]
 
 - type: entity
   parent: OrganHumanBrain
@@ -187,6 +295,7 @@
   components:
   - type: MedicalOrgan
     kind: Heart
+  - type: MedicalOrganViability
 
 - type: entity
   parent: OrganHumanLungs
@@ -195,13 +304,16 @@
   components:
   - type: MedicalOrgan
     kind: Lungs
+  - type: MedicalOrganViability
 
 - type: entity
   parent: OrganHumanTorso
   id: OrganMedicalTestTorso
+  name: chest
   suffix: Experimental Physiology
   components:
   - type: MedicalWound
+    requiresBoneAccess: true
 
 - type: entity
   parent: OrganHumanHead
@@ -209,6 +321,79 @@
   suffix: Experimental Physiology
   components:
   - type: MedicalWound
+    requiresBoneAccess: true
+
+- type: entity
+  parent: [OrganHuman, OrganBaseParent, OrganBaseChildExternal]
+  id: OrganMedicalTestAbdomen
+  name: abdomen
+  suffix: Experimental Physiology
+  components:
+  - type: Organ
+    category: Abdomen
+  - type: Sprite
+    sprite: Mobs/Species/Human/parts.rsi
+    state: torso_m
+  - type: MedicalWound
+
+- type: entity
+  parent: OrganMedicalTestAbdomen
+  id: OrganMedicalTestGroin
+  name: groin
+  components:
+  - type: Organ
+    category: Groin
+
+- type: entity
+  parent: [OrganBaseLiver, OrganHumanInternal]
+  id: OrganMedicalTestLiver
+  suffix: Experimental Physiology
+  components:
+  - type: MedicalOrgan
+    kind: Liver
+    protectedBy: Abdomen
+  - type: MedicalOrganViability
+
+- type: entity
+  parent: [OrganBase, OrganBaseChildInternal, OrganHumanInternal]
+  id: OrganMedicalTestKidneyLeft
+  name: left kidney
+  suffix: Experimental Physiology
+  components:
+  - type: Organ
+    category: KidneyLeft
+  - type: Sprite
+    state: kidney-l
+  - type: MedicalOrgan
+    kind: Kidney
+    protectedBy: Abdomen
+  - type: MedicalOrganViability
+
+- type: entity
+  parent: OrganMedicalTestKidneyLeft
+  id: OrganMedicalTestKidneyRight
+  name: right kidney
+  components:
+  - type: Organ
+    category: KidneyRight
+  - type: Sprite
+    state: kidney-r
+
+- type: entity
+  parent: [OrganBase, OrganBaseChildInternal, OrganHumanInternal]
+  id: OrganMedicalTestIntestines
+  name: intestines
+  suffix: Experimental Physiology
+  description: Experimental intestinal tissue. Uses a placeholder stomach sprite.
+  components:
+  - type: Organ
+    category: Intestines
+  - type: Sprite
+    state: stomach
+  - type: MedicalOrgan
+    kind: Intestines
+    protectedBy: Abdomen
+  - type: MedicalOrganViability
 
 - type: entity
   parent: OrganHumanArmLeft

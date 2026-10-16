@@ -21,4 +21,11 @@ public sealed partial class PhysiologyComponent : Component
 
     [DataField, AutoNetworkedField]
     public float RightHandFunction = 1f;
+
+    /// <summary>Rounded perceived pain for patient feedback and predicted sprint speed.</summary>
+    [DataField, AutoNetworkedField]
+    public int Pain;
+
+    [DataField, AutoNetworkedField]
+    public float TemperatureSpeed = 1f;
 }

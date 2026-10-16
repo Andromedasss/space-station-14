@@ -7,6 +7,9 @@ public enum MedicalOrganKind : byte
 {
     Heart,
     Lungs,
+    Kidney,
+    Liver,
+    Intestines,
 }
 
 /// <summary>
@@ -29,10 +32,13 @@ public sealed partial class MedicalOrganComponent : Component
     public bool Fibrillating;
 
     [DataField]
+    public bool Perforated;
+
+    [DataField]
     public string ProtectedBy = "Torso";
 
     /// <summary>
-    /// Applied damage below this per-hit threshold does not reach the internal organ.
+    /// Tissue protection threshold, cumulative for blunt trauma and per-hit for cutting/penetrating trauma.
     /// </summary>
     [DataField]
     public float TraumaThreshold = 20f;
