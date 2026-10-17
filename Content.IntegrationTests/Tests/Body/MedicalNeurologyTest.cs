@@ -81,7 +81,7 @@ public sealed class MedicalNeurologyTest : GameTest
     public void CognitiveSymptomsAffectIdentityWritingThrowsAndHandWorkOnly()
     {
         var patient = SSpawn("MobMedicalTestHuman");
-        var other = SSpawn("MobHuman");
+        var other = SSpawn("MobMedicalTestHuman");
         var physiology = SEntMan.System<PhysiologySystem>();
         Assert.That(physiology.TryIntervene(patient, "cognition", 31f), Is.True);
         Assert.That(Identity.Name(other, SEntMan, patient), Is.EqualTo("Unfamiliar person"));
@@ -118,7 +118,7 @@ public sealed class MedicalNeurologyTest : GameTest
         var speech = new AccentGetEvent(patient, "This patient needs treatment.");
         SEntMan.EventBus.RaiseLocalEvent(patient, ref speech);
         Assert.That(speech.Message, Is.EqualTo("This patient needs treatment."));
-        Assert.That(physiology.TryIntervene(other, "cognition", 31f), Is.False);
+        Assert.That(physiology.TryIntervene(other, "cognition", 31f), Is.True);
         Assert.That(physiology.TryIntervene(patient, "cognition", 32f), Is.False);
         Assert.That(physiology.TryIntervene(patient, "phobia", 6f), Is.False);
     }
@@ -226,8 +226,8 @@ public sealed class MedicalNeurologyTest : GameTest
         Assert.That(incoming.Comp2.RecoveryRemaining, Is.Empty);
         Assert.That(SComp<PhysiologyComponent>(patient).MuscleWeakness, Is.False);
         Assert.That(SComp<MovementSpeedModifierComponent>(patient).WalkSpeedModifier, Is.EqualTo(1f).Within(0.001f));
-        var ordinary = SSpawn("MobHuman");
-        Assert.That(physiology.TryIntervene(ordinary, "weakness", 1f), Is.False);
+        var ordinary = SSpawn("MobMedicalTestHuman");
+        Assert.That(physiology.TryIntervene(ordinary, "weakness", 1f), Is.True);
         speech = new AccentGetEvent(ordinary, "This patient needs treatment.");
         SEntMan.EventBus.RaiseLocalEvent(ordinary, ref speech);
         Assert.That(speech.Message, Is.EqualTo("This patient needs treatment."));

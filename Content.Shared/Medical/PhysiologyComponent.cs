@@ -3,8 +3,8 @@ using Robust.Shared.GameStates;
 namespace Content.Shared.Medical;
 
 /// <summary>
-/// Opts a test patient into server-authoritative physiology instead of damage thresholds.
-/// Not intended for arbitrary mobs: the patient must have a bloodstream, respirator and medical organs.
+/// Enables server-authoritative physiology for a humanoid mob instead of damage thresholds.
+/// Requires a bloodstream, respirator and medical organs on the mob.
 /// </summary>
 [RegisterComponent, NetworkedComponent, AutoGenerateComponentState(true)]
 public sealed partial class PhysiologyComponent : Component

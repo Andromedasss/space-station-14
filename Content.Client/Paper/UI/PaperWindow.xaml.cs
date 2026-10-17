@@ -272,7 +272,7 @@ namespace Content.Client.Paper.UI
 
             var msg = new FormattedMessage();
             if (_alexia)
-                msg.AddText(Loc.GetString("medical-neurology-unreadable"));
+                msg.AddMarkupPermissive(NeurologicalTrauma.AlexicText(state.Text));
             else
                 msg.AddMarkupPermissive(state.Text);
 

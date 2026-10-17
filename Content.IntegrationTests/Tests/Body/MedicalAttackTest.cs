@@ -67,17 +67,15 @@ public sealed class MedicalAttackTest : InteractionTest
         });
     }
 
-    [TestCase("WeaponPistolViper", "Piercing", 16f, true, null)]
-    [TestCase("WeaponLaserGun", "Heat", 17f, true, null)]
-    [TestCase("WeaponPistolViper", "Piercing", 16f, false, null)]
-    [TestCase("WeaponLaserGun", "Heat", 17f, false, null)]
-    [TestCase("WeaponPistolViper", "Piercing", 19.2f, true, "Slime")]
-    [TestCase("WeaponLaserGun", "Heat", 20.4f, true, "Moth")]
+    [TestCase("WeaponPistolViper", "Piercing", 16f, null)]
+    [TestCase("WeaponLaserGun", "Heat", 17f, null)]
+    [TestCase("WeaponPistolViper", "Piercing", 19.2f, "Slime")]
+    [TestCase("WeaponLaserGun", "Heat", 20.4f, "Moth")]
     public async Task RealShotPreservesTotalDamageAndOnlyExperimentalPatientsGetLocalWounds(
-        string gun, string damageType, float expected, bool experimental, string? modifier)
+        string gun, string damageType, float expected, string? modifier)
     {
         await AddAtmosphere();
-        await SpawnTarget(experimental ? "MobMedicalTestHuman" : "MobHuman");
+        await SpawnTarget("MobMedicalTestHuman");
         if (modifier != null)
             await Server.WaitPost(() => SEntMan.System<DamageableSystem>().SetDamageModifierSetId(STarget!.Value, modifier));
         await PlaceInHands(gun);
@@ -94,24 +92,16 @@ public sealed class MedicalAttackTest : InteractionTest
         {
             var patient = STarget!.Value;
             var hit = GetEvents<DamageChangedEvent>().Single();
-            Assert.That(hit.TargetPart.HasValue, Is.EqualTo(experimental));
+            Assert.That(hit.TargetPart.HasValue, Is.True);
             var damage = SEntMan.System<DamageableSystem>().GetAllDamage(patient);
             Assert.That(damage.DamageDict[damageType].Float(), Is.EqualTo(expected));
             var scan = SEntMan.System<PhysiologySystem>().Scan(patient);
-            if (!experimental)
-            {
-                Assert.That(scan, Is.Null);
-                Assert.That(SEntMan.HasComponent<PhysiologyComponent>(patient), Is.False);
-                return;
-            }
             Assert.That(scan!.Injuries, Has.Count.EqualTo(1));
             Assert.That(scan.Injuries[0].Damage, Is.EqualTo(expected));
             category = scan.Injuries[0].Category;
             Assert.That(SEntMan.GetComponent<OrganComponent>(hit.TargetPart!.Value).Category!.Value.Id, Is.EqualTo(category));
             Assert.That(scan.Injuries[0].Bleeding, damageType == "Heat" ? Is.Zero : Is.GreaterThan(0f));
         });
-        if (!experimental)
-            return;
 
         await InteractUsing("HandheldHealthAnalyzer");
         await RunTicks(20);
@@ -133,7 +123,7 @@ public sealed class MedicalAttackTest : InteractionTest
         await AddAtmosphere();
         var first = await SpawnTarget("MobMedicalTestHuman");
         var second = await Spawn("MobMedicalTestHuman");
-        var ordinary = await Spawn("MobHuman");
+        var ordinary = await Spawn("MobMedicalTestHuman");
         var weapon = await PlaceInHands("Crowbar");
         await RunSeconds(2f);
         await SetCombatMode(true);
@@ -151,7 +141,7 @@ public sealed class MedicalAttackTest : InteractionTest
                 Assert.That(SEntMan.System<DamageableSystem>().GetTotalDamage(patient).Float(), Is.EqualTo(8f));
             }
             var human = SEntMan.GetEntity(ordinary);
-            Assert.That(SEntMan.System<PhysiologySystem>().Scan(human), Is.Null);
+            Assert.That(SEntMan.System<PhysiologySystem>().Scan(human), Is.Not.Null);
             Assert.That(SEntMan.System<DamageableSystem>().GetTotalDamage(human).Float(), Is.EqualTo(8f));
         });
     }

@@ -211,7 +211,13 @@ public sealed class PhysiologySystem : EntitySystem
     private void OnMetabolismRate(Entity<PhysiologyComponent> ent, ref MetabolismRateEvent args)
     {
         if (args.Stage == "Digestion")
-            args.Multiplier *= OrganFunction(ent, MedicalOrganKind.Intestines);
+        {
+            // Only gate digestion when the body actually models intestines.
+            // Regular humans have no intestinal organ and digest at the normal rate.
+            if (TryComp<BodyComponent>(ent.Owner, out var body) &&
+                _body.EnumerateOrgans<MedicalOrganComponent>((ent.Owner, body)).Any(p => p.Comp2.Kind == MedicalOrganKind.Intestines))
+                args.Multiplier *= OrganFunction(ent, MedicalOrganKind.Intestines);
+        }
         else if (args.Stage == "Bloodstream")
         {
             // Explicit routing only: no blanket slowdown of every drug or toxin.
@@ -391,7 +397,7 @@ public sealed class PhysiologySystem : EntitySystem
     {
         if (!HasComp<PhysiologyComponent>(uid) || !TryComp<BodyComponent>(uid, out var body)
             || !TryComp<PhysiologyStateComponent>(uid, out var state))
-            return "Not an experimental medical patient. Spawn MobMedicalTestHuman.";
+            return "Not an experimental medical patient. Mob is missing physiology components.";
 
         Sample(uid, body, state);
         var text = new StringBuilder();

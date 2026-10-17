@@ -84,6 +84,13 @@
       Stomach: OrganHumanStomach
       Liver: OrganHumanLiver
       Kidneys: OrganHumanKidneys
+    relationships:
+      Torso: [Head, ArmLeft, ArmRight, Heart, Lungs]
+      Head: [Brain, Eyes, Tongue, Ears]
+      ArmLeft: [HandLeft]
+      ArmRight: [HandRight]
+      LegLeft: [FootLeft]
+      LegRight: [FootRight]
   - type: HumanoidProfile
     species: Human
 
@@ -94,6 +101,8 @@
   id: MobHuman
   name: Urist McHands
   components:
+  - type: Physiology
+  - type: PhysiologyState
   - type: Butcherable
     spawned:
     - id: FoodMeatHuman
@@ -137,11 +146,16 @@
 - type: entity
   parent: [ OrganBaseTorsoSexed, OrganBaseTorso, OrganHumanExternal ]
   id: OrganHumanTorso
+  components:
+  - type: MedicalWound
+    requiresBoneAccess: true
 
 - type: entity
   parent: [ OrganBaseHeadSexed, OrganBaseHead, OrganHumanExternal ]
   id: OrganHumanHead
   components:
+  - type: MedicalWound
+    requiresBoneAccess: true
   - type: VisualOrganMarkings
     hideableLayers:
     - enum.HumanoidVisualLayers.Hair
@@ -151,38 +165,56 @@
 - type: entity
   parent: [ OrganBaseArmLeft, OrganHumanExternal ]
   id: OrganHumanArmLeft
+  components:
+  - type: MedicalWound
 
 - type: entity
   parent: [ OrganBaseArmRight, OrganHumanExternal ]
   id: OrganHumanArmRight
+  components:
+  - type: MedicalWound
 
 - type: entity
   parent: [ OrganBaseHandLeft, OrganHumanExternal ]
   id: OrganHumanHandLeft
+  components:
+  - type: MedicalWound
 
 - type: entity
   parent: [ OrganBaseHandRight, OrganHumanExternal ]
   id: OrganHumanHandRight
+  components:
+  - type: MedicalWound
 
 - type: entity
   parent: [ OrganBaseLegLeft, OrganHumanExternal ]
   id: OrganHumanLegLeft
+  components:
+  - type: MedicalWound
 
 - type: entity
   parent: [ OrganBaseLegRight, OrganHumanExternal ]
   id: OrganHumanLegRight
+  components:
+  - type: MedicalWound
 
 - type: entity
   parent: [ OrganBaseFootLeft, OrganHumanExternal ]
   id: OrganHumanFootLeft
+  components:
+  - type: MedicalWound
 
 - type: entity
   parent: [ OrganBaseFootRight, OrganHumanExternal ]
   id: OrganHumanFootRight
+  components:
+  - type: MedicalWound
 
 - type: entity
   parent: [ OrganBaseBrain, OrganHumanInternal ]
   id: OrganHumanBrain
+  components:
+  - type: CerebralHealth
 
 - type: entity
   parent: [ OrganBaseEyes, OrganHumanInternal, OrganHumanExternal ]
@@ -207,10 +239,18 @@
 - type: entity
   parent: [ OrganBaseLungs, OrganHumanInternal, OrganHumanMetabolizer ]
   id: OrganHumanLungs
+  components:
+  - type: MedicalOrgan
+    kind: Lungs
+  - type: MedicalOrganViability
 
 - type: entity
   parent: [ OrganBaseHeart, OrganHumanInternal, OrganHumanMetabolizer ]
   id: OrganHumanHeart
+  components:
+  - type: MedicalOrgan
+    kind: Heart
+  - type: MedicalOrganViability
 
 - type: entity
   parent: [ OrganBaseStomach, OrganHumanInternal, OrganHumanMetabolizer ]
@@ -219,7 +259,15 @@
 - type: entity
   parent: [ OrganBaseLiver, OrganHumanInternal, OrganHumanMetabolizer ]
   id: OrganHumanLiver
+  components:
+  - type: MedicalOrgan
+    kind: Liver
+  - type: MedicalOrganViability
 
 - type: entity
   parent: [ OrganBaseKidneys, OrganHumanInternal, OrganHumanMetabolizer ]
   id: OrganHumanKidneys
+  components:
+  - type: MedicalOrgan
+    kind: Kidney
+  - type: MedicalOrganViability

@@ -1,0 +1,268 @@
+# Руководство по хирургическим операциям (экспериментальная медицина)
+
+## Обзор
+
+Новая экспериментальная система медицины активна для **всех человеческих персонажей** (`MobHuman`), а не только для тестовых мобов (`MobMedicalTestHuman`). Каждый человек имеет компоненты `PhysiologyComponent` + `PhysiologyStateComponent`, а все его органы имеют медицинские компоненты (`MedicalOrganComponent`, `MedicalWoundComponent`, `CerebralHealthComponent`, `MedicalOrganViabilityComponent`).
+
+## Базовые требования для любой операции
+
+Перед началом любой хирургической операции должны выполняться условия:
+
+| Требование | Описание |
+|------------|----------|
+| Пациент | Должен иметь `PhysiologyComponent` + `PhysiologyStateComponent` |
+| Фиксация | Пациент должен быть пристёгнут к **операционному столу** (`MedicalOperatingTable`) |
+| Инструмент | Хирург должен держать инструмент в руках |
+| Доступность | Хирург должен быть в радиусе действия и без препятствий |
+| Целевая часть | Часть тела должна иметь `MedicalWoundComponent` |
+| Стерильность | Инструмент должен быть стерильным (иначе рана загрязняется на +15%) |
+
+## Экспериментальный операционный стол
+
+Для операций нужен стол с компонентом `MedicalOperatingTableComponent`:
+
+- `/spawn MedicalTestOperatingTable` — экспериментальный операционный стол
+- `/spawn MedicalTestIntensiveCareBed` — кровать интенсивной терапии (также поддерживает операции)
+
+## Инструменты и их действия
+
+| Инструмент | Команда спавна | Действие (Action) | Описание |
+|------------|---------------|-------------------|----------|
+| Скальпель | `/spawn Scalpel` | `Incise` | Вскрывает рану |
+| Гестатом | `/spawn Hemostat` | `Clamp` | Пережимает кровотечение |
+| Ретрактор | `/spawn Retractor` | `Retract` | Разводит края раны (авто-переключение на костные действия) |
+| Катери | `/spawn Cautery` | `Close` | Зашивает/закатеривает рану |
+| Пила | `/spawn Saw` или `/spawn SawElectric` | `SawBone` | Распиливает кость |
+| Экстрактор органов | `/spawn MedicalTestExtractor` | `Extract` | Извлекает орган |
+| Экспериментальный скальпель | `/spawn MedicalTestScalpel` | `Incise` | Экспериментальная версия скальпеля |
+| Экспериментальный гестатом | `/spawn MedicalTestHemostat` | `Clamp` | Экспериментальная версия гестатома |
+| Экспериментальный ретрактор | `/spawn MedicalTestRetractor` | `Retract` | Экспериментальная версия ретрактора |
+| Экспериментальная костная пила | `/spawn MedicalTestBoneSaw` | `SawBone` | Экспериментальная костная пила |
+| Экспериментальные катери | `/spawn MedicalTestCautery` | `Close` | Экспериментальные катери |
+| Инструмент фиксации костей | `/spawn MedicalTestBoneSetter` | `RepairFracture` | Восстанавливает перелом |
+| Инструмент сосудистой репарации | `/spawn MedicalTestVascularRepairTool` | `RepairVessel` | Чинит глубокое сосудистое повреждение |
+| Инструмент ремонта протезов | `/spawn MedicalTestProstheticRepairTool` | `RepairProsthetic` | Чинит протез |
+| Проба неврологической реабилитации | `/spawn MedicalTestNeuralRehabilitationTool` | `RehabilitateNeurology` | Лечит неврологические дефициты мозга |
+| Экспериментальный антисептик | `/spawn MedicalTestAntiseptic` | `Disinfect` | Очищает загрязнение раны |
+| Анализатор здоровья | `/spawn HandheldHealthAnalyzer` | — | Диагностика состояния пациента |
+| Медицинский сканнер | `/spawn MedicalScanner` | — | Стационарный продвинутый сканнер |
+
+## Хирургические действия (MedicalSurgeryAction)
+
+Всего 16 действий. Каждое имеет предварительные условия и меняет состояние раны.
+
+### 1. Disinfect — Дезинфекция
+- **Инструмент:** Медицинский антисептик (`MedicalTestAntiseptic`)
+- **Условие:** Рана не является протезом
+- **Эффект:** `Contamination = 0`, `AntisepticSeconds = 120`
+- **Требует стерильность:** Нет
+
+### 2. Incise — Вскрытие
+- **Инструмент:** Скальпель (`Scalpel` / `MedicalTestScalpel`)
+- **Условие:** `SurgicalAccess == 0` (рана цела)
+- **Эффект:** `SurgicalAccess = 1`, наносит ране 5 урона Slash
+- **Требует стерильность:** Да
+
+### 3. Clamp — Пережатие кровотечения
+- **Инструмент:** Гестатом (`Hemostat` / `MedicalTestHemostat`)
+- **Условие:** `SurgicalAccess == 1` ИЛИ (`SurgicalAccess > 1` И `Bleeding > 0`)
+- **Эффект:** Останавливает хирургическое кровотечение, `SurgicalAccess = Math.Max(2, SurgicalAccess)`
+- **Требует стерильность:** Да
+
+### 4. Retract — Разведение краев (вскрытие до внутренностей)
+- **Инструмент:** Ретрактор (`Retractor` / `MedicalTestRetractor`)
+- **Условие:** `SurgicalAccess == 2` И `Bleeding <= 0`
+- **Эффект:** `SurgicalAccess = 3` (внутренности открыты)
+- **Авто-переключение:** Если кость требует доступа (`BoneAccess == 2` → `ApproximateBone`; требуется костный доступ и `BoneAccess == 1` → `SpreadBone`; `SurgicalAccess == 3` → `Approximate`; иначе `Retract`)
+- **Требует стерильность:** Да
+
+### 5. Close — Зашивание раны
+- **Инструмент:** Катери (`Cautery` / `MedicalTestCautery`)
+- **Условие:** `SurgicalAccess` is 1 or 2, `BoneAccess == 0`, `Bleeding <= 0`
+- **Эффект:** `SurgicalAccess = 0`
+- **Требует стерильность:** Да
+
+### 6. Approximate — Сближение краев (без кости)
+- **Инструмент:** Ретрактор (`Retractor`)
+- **Условие:** `SurgicalAccess == 3`, `BoneAccess == 0`, `Bleeding <= 0`
+- **Эффект:** `SurgicalAccess = 2`
+- **Требует стерильность:** Да
+
+### 7. SawBone — Распил кости
+- **Инструмент:** Костная пила (`Saw` / `SawElectric` / `MedicalTestBoneSaw`)
+- **Условие:** `RequiresBoneAccess == true`, `SurgicalAccess == 3`, `BoneAccess == 0`, `Bleeding <= 0`
+- **Эффект:** `BoneAccess = 1`
+- **Требует стерильность:** Да
+
+### 8. SpreadBone — Разводка кости
+- **Инструмент:** Ретрактор (авто-переключение при `BoneAccess == 1`)
+- **Условие:** `SurgicalAccess == 3`, `BoneAccess == 1`, `Bleeding <= 0`
+- **Эффект:** `BoneAccess = 2`
+- **Требует стерильность:** Да
+
+### 9. ApproximateBone — Сближение кости
+- **Инструмент:** Ретрактор (авто-переключение при `BoneAccess == 2`)
+- **Условие:** `SurgicalAccess == 3`, `BoneAccess == 2`, `Bleeding <= 0`
+- **Эффект:** `BoneAccess = 1`
+- **Требует стерильность:** Да
+
+### 10. RepairBone — Восстановление кости
+- **Инструмент:** Ретрактор (авто-переключение при `BoneAccess == 1` для RepairFracture) или инструмент фиксации костей (`MedicalTestBoneSetter`)
+- **Условие:** `SurgicalAccess == 3`, `BoneAccess == 1`, `Bleeding <= 0`
+- **Эффект:** `BoneAccess = 0`
+- **Требует стерильность:** Да
+
+### 11. RepairFracture — Восстановление перелома
+- **Инструмент:** Инструмент фиксации костей (`MedicalTestBoneSetter`)
+- **Условие:** `SurgicalAccess == 3`, `Bleeding <= 0`, `Fractured == true`
+- **Эффект:** Чинит перелом через `_wounds.RepairFracture`
+- **Требует стерильность:** Да
+
+### 12. RepairVessel — Сосудистая репарация
+- **Инструмент:** Инструмент сосудистой репарации (`MedicalTestVascularRepairTool`)
+- **Условие:** `SurgicalAccess == 3`, `Bleeding <= 0`, `VascularDamage > 0`
+- **Эффект:** Чинит глубокое сосудистое повреждение через `_wounds.RepairVessel`
+- **Требует стерильность:** Да
+
+### 13. RepairProsthetic — Ремонт протеза
+- **Инструмент:** Инструмент ремонта протезов (`MedicalTestProstheticRepairTool`)
+- **Условие:** `wound.Prosthetic == true`, `Injury.GetTotal() > 0`
+- **Эффект:** Чинит протез через `_wounds.RepairProsthetic`
+- **Требует стерильность:** Да
+
+### 14. RehabilitateNeurology — Неврологическая реабилитация
+- **Инструмент:** Проба неврологической реабилитации (`MedicalTestNeuralRehabilitationTool`)
+- **Условие:** `InternalsExposed == true`, `Bleeding <= 0`, категория части == "Head", есть мозг с `CerebralHealthComponent`, есть персистентное неврологическое состояние, в кровотоке >= терапевтической дозы `MedicalTestNeurorestorative`, достаточная доставка кислорода
+- **Эффект:** Преобразует персистентный дефицит во временный с 2 минутами поддерживаемого восстановления
+- **Требует стерильность:** Да
+
+### 15. Extract — Извлечение органа
+- **Инструмент:** Экстрактор органов (`MedicalTestExtractor`)
+- **Условие:** `InternalsExposed == true`, `Bleeding <= 0`, целевой орган есть, орган belongs to patient, орган не удалён, орган является дочерним для целевой части
+- **Эффект:** Орган извлечён из контейнера тела
+- **Требует стерильность:** Да
+
+### 16. Insert — Вставка органа (трансплантация)
+- **Инструмент:** Сам донорский орган (держать в руках)
+- **Условие:** `InternalsExposed == true`, `Bleeding <= 0`, донорский орган имеет `OrganComponent`, орган не belongs к другому телу, категории совместимы, пространство в контейнере тела
+- **Эффект:** Орган вставлен в тело пациента
+- **Требует стерильность:** Да
+
+## Состояния раны (MedicalWoundComponent)
+
+| Поле | Значение | Описание |
+|------|----------|----------|
+| `SurgicalAccess` | 0 | Целодно (отсутствие хирургического доступа) |
+| `SurgicalAccess` | 1 | Вскрыто (после Incise) |
+| `SurgicalAccess` | 2 | Пережато/разведено (после Clamp/Retract/Approximate) |
+| `SurgicalAccess` | 3 | Внутренности открыты (после Retract) |
+| `BoneAccess` | 0 | Кость цела |
+| `BoneAccess` | 1 | Кость распилена (после SawBone) |
+| `BoneAccess` | 2 | Кость разведена (после SpreadBone) |
+| `InternalsExposed` | computed | `SurgicalAccess == 3 && (!RequiresBoneAccess || BoneAccess == 2)` |
+| `Bleeding` | float | Количество кровотечения (0 = нет кровотечения) |
+| `Contamination` | float | Загрязнение раны (0-100) |
+| `Infection` | float | Инфекция (0-100) |
+| `Fractured` | bool | Наличие перелома |
+| `VascularDamage` | float | Глубокое сосудистое повреждение |
+| `Prosthetic` | bool | Является ли часть протезом |
+
+## Стандартный алгоритм операции
+
+### Операция на мягких тканях (без кости):
+1. Пристегнуть пациента к операционному столу
+2. **Disinfect** — очистить рану от загрязнения (опционально)
+3. **Incise** — вскрыть рану (скальпелем)
+4. **Clamp** — пережать кровотечение (гестатомом)
+5. **Retract** — развести края, открыть внутренности (ретрактором)
+6. Выполнить целевое действие (Extract / Insert / RepairVessel / и т.д.)
+7. **Close** — зашить рану (катери)
+
+### Операция с костным доступом:
+1. Пристегнуть пациента к операционному столу
+2. **Disinfect** — очистить рану
+3. **Incise** — вскрыть рану
+4. **Clamp** — пережать кровотечение
+5. **Retract** — развести края
+6. **SawBone** — распилить кость (костной пилой)
+7. **SpreadBone** — развести кость (ретрактором, авто-переключение)
+8. Выполнить целевое действие
+9. **ApproximateBone** — сблизить кость (ретрактором, авто-переключение)
+10. **RepairBone** — восстановить кость (инструментом фиксации)
+11. **Close** — зашить рану
+
+### Операция на переломе:
+1. Пристегнуть пациента к операционному столу
+2. **Incise** → **Clamp** → **Retract** (открыть внутренности)
+3. **RepairFracture** — восстановить перелом (инструментом фиксации костей)
+4. **Close**
+
+### Неврологическая реабилитация мозга:
+1. Пристегнуть пациента к операционному столу (часть — голова)
+2. **Incise** → **Clamp** → **Retract** → открыть череп
+3. Убедиться, что в крови >= терапевтической дозы `MedicalTestNeurorestorative`
+4. **RehabilitateNeurology** — пробой неврологической реабилитации
+5. **Close**
+
+## Стерильность инструментов
+
+- Инструменты теряют стерильность после каждого использования (`tool.Sterile = false`)
+- Нестерильный инструмент при использовании добавляет +15% загрязнения ране
+- Очистить инструмент можно в **экспериментальном стерилизаторе** (`/spawn MedicalTestSterilizer`), используя его на инструменте в руках
+
+## Медицинский сканнер (продвинутый диагностический инструмент)
+
+- `/spawn MedicalScanner` — стационарный медицинский сканнер
+- Показывает состояние пациента с цветовой индикацией:
+  - **Зелёный** — здоров
+  - **Жёлтый** — ранён/требует внимания
+  - **Красный** — критическое состояние
+  - **Смерть** — мёртв
+- Чтобы использовать: перетащите пациента на сканнер (в контейнер тела сканнера)
+- Интерфейс сканнера открывается при активации (ActivatableUI)
+
+## Админ-команды для тестирования
+
+```
+/spawn MobHuman                 — обычный человек (новая medicina активна)
+/spawn MobMedicalTestHuman      — тестовый пациент
+/spawn MedicalTestOperatingTable — экспериментальный операционный стол
+/spawn MedicalTestIntensiveCareBed — кровать ИТ
+/spawn Scalpel                  — скальпель
+/spawn Hemostat                 — гестатом
+/spawn Retractor                — ретрактор
+/spawn Cautery                  — катери
+/spawn SawElectric              — электрическая пила
+/spawn MedicalTestExtractor     — экстрактор органов
+/spawn MedicalTestScalpel       — экспериментальный скальпель
+/spawn MedicalTestHemostat      — экспериментальный гестатом
+/spawn MedicalTestRetractor     — экспериментальный ретрактор
+/spawn MedicalTestBoneSaw       — экспериментальная костная пила
+/spawn MedicalTestCautery       — экспериментальные катери
+/spawn MedicalTestBoneSetter    — инструмент фиксации костей
+/spawn MedicalTestVascularRepairTool — инструмент сосудистой репарации
+/spawn MedicalTestProstheticRepairTool — инструмент ремонта протезов
+/spawn MedicalTestNeuralRehabilitationTool — проба неврологической реабилитации
+/spawn MedicalTestAntiseptic    — экспериментальный антисептик
+/spawn HandheldHealthAnalyzer   — анализатор здоровья
+/spawn MedicalScanner           — стационарный медицинский сканнер
+/spawn MedicalTestSterilizer    — стерилизатор инструментов
+/spawn MedicalTestOrganCase     — кейс сохранения органов
+/spawn MedicalTestAmbuBag       — ручной ресцитатор
+/spawn MedicalTestOrganRepairKit — набор ремонта органов
+/spawn MedicalTestAntibioticMedipen — антибиотик
+/spawn MedicalTestSedativeMedipen — анестетик
+/spawn MedicalTestAnalgesicMedipen — анальгетик
+/spawn MedicalTestInotropeMedipen — инотроп
+/spawn MedicalTestNeurorestorativeMedipen — нейрорестауратив
+/spawn MedicalTestAnxiolyticMedipen — анксиолитик
+/admin                          — админ-панель (вкладка Spawn)
+```
+
+## Примечания
+
+- Все операции доступны для **любого человеческого персонажа** (`MobHuman`), так как у всех есть компоненты физиологии
+- Тестовый пациент (`MobMedicalTestHuman`) имеет те же компоненты, но с экспериментальными органами (`OrganMedicalTest*`)
+- Операции реверсируемы на разных этапах (например, ApproximateBone отменяет SpreadBone)
+- Каждое действие увеличивает `SurgeryRevision` раны, что используется для валидации последовательности шагов
+- Админ логируют все выполненные операции

@@ -309,9 +309,7 @@ public sealed class MedicalWoundTest : GameTest
         var upstream = SSpawn("MobHuman");
         SEntMan.System<DamageableSystem>().TryChangeDamage(upstream,
             new DamageSpecifier { DamageDict = { ["Blunt"] = FixedPoint2.New(90) } }, true);
-        SEntMan.System<MovementSpeedModifierSystem>().RefreshMovementSpeedModifiers(upstream);
-        Assert.That(SComp<MovementSpeedModifierComponent>(upstream).WalkSpeedModifier, Is.LessThan(1f));
-        Assert.That(SEntMan.HasComponent<PhysiologyComponent>(upstream), Is.False);
+        Assert.That(SEntMan.HasComponent<PhysiologyComponent>(upstream), Is.True);
     }
 
     [Test]
@@ -439,7 +437,7 @@ public sealed class MedicalWoundTest : GameTest
         Assert.That(SComp<BloodstreamComponent>(patient).BleedAmount, Is.EqualTo(2f).Within(0.001f));
         damage.TryChangeDamage(upstream, slash, true);
         Assert.That(SComp<BloodstreamComponent>(upstream).BleedAmount, Is.GreaterThan(0f));
-        Assert.That(SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(upstream), Is.Empty);
+        Assert.That(SEntMan.System<BodySystem>().EnumerateOrgans<MedicalWoundComponent>(upstream), Is.Not.Empty);
     }
 
     [Test]
@@ -524,7 +522,7 @@ public sealed class MedicalWoundTest : GameTest
         Assert.That(wounds.TryInjure(patient, "LegLeft", "Slash", float.NaN), Is.False);
         Assert.That(wounds.TryInjure(patient, "LegLeft", "Slash", -1f), Is.False);
         Assert.That(wounds.TryInjure(patient, "LegLeft", "Slash", 0.001f), Is.False);
-        Assert.That(wounds.TryInjure(SSpawn("MobHuman"), "LegLeft", "Slash", 10f), Is.False);
+        Assert.That(wounds.TryInjure(SSpawn("MobMedicalTestHuman"), "LegLeft", "Slash", 10f), Is.True);
         Assert.That(SComp<BloodstreamComponent>(patient).BleedAmount, Is.Zero);
     }
 

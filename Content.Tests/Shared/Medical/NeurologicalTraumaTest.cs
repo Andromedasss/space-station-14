@@ -38,4 +38,15 @@ public sealed class NeurologicalTraumaTest
     {
         Assert.That(NeurologicalTrauma.AphasicSpeech(input), Is.EqualTo(expected));
     }
+
+    [TestCase("", "")]
+    [TestCase("123?!", "123?!")]
+    [TestCase("Help!", "pleH!")]
+    [TestCase("This patient needs treatment.", "sihT tneitap sdeen tnemtaert.")]
+    [TestCase("<color=red>Name</color>: message", "<color=red>emaN</color>: egassem")]
+    [TestCase("[bold]Help![/bold]", "[bold]pleH![/bold]")]
+    public void AlexicTextKeepsLettersButScramblesThem(string input, string expected)
+    {
+        Assert.That(NeurologicalTrauma.AlexicText(input), Is.EqualTo(expected));
+    }
 }

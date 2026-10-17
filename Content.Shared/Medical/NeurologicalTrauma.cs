@@ -86,11 +86,26 @@ public static class NeurologicalTrauma
 
     private static readonly Regex Words = new(@"\p{L}+", RegexOptions.Compiled);
     private static readonly Regex Writing = new(@"\[[^\]\r\n]*\]|\p{L}+", RegexOptions.Compiled);
+    private static readonly Regex AlexiaWords = new(@"(?:<[^>]*>|\[[^\]]*\])|\p{L}+", RegexOptions.Compiled);
 
     /// <summary>Gameplay expressive aphasia: missing words, not altered commands or emotes.</summary>
     public static string AphasicSpeech(string message)
     {
         var index = 0;
         return Words.Replace(message, match => index++ % 2 == 0 ? "..." : match.Value);
+    }
+
+    /// <summary>Gameplay alexia: letters present but scrambled when reading.</summary>
+    public static string AlexicText(string text)
+    {
+        return AlexiaWords.Replace(text, match =>
+        {
+            var value = match.Value;
+            if (value.StartsWith("<") || value.StartsWith("["))
+                return value;
+            var letters = value.ToCharArray();
+            Array.Reverse(letters);
+            return new string(letters);
+        });
     }
 }
