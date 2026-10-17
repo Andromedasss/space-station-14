@@ -266,6 +266,12 @@ public abstract partial class SharedDoAfterSystem : EntitySystem
             return false;
         }
 
+        // Hand-dependent work is slower, not randomly cancelled, with motor deficits.
+        if (args.NeedHand && TryComp<Content.Shared.Medical.PhysiologyComponent>(args.User, out var physiology))
+        {
+            args = new DoAfterArgs(args);
+            args.Delay *= Content.Shared.Medical.NeurologicalTrauma.PrecisionDelay(physiology.CognitiveSymptoms);
+        }
         id = new DoAfterId(args.User, comp.NextId++);
         var doAfter = new DoAfter(id.Value.Index, args, GameTiming.CurTime);
 

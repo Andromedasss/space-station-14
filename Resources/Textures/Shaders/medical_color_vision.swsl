@@ -1,0 +1,24 @@
+uniform sampler2D SCREEN_TEXTURE;
+uniform highp float vision;
+
+void fragment() {
+    highp vec4 tex = zTextureSpec(SCREEN_TEXTURE, FRAGCOORD.xy * SCREEN_PIXEL_SIZE.xy);
+    highp vec3 color = tex.rgb;
+    // Stylized gameplay approximations, not diagnostic color-vision simulations.
+    if (vision < 1.5) {
+        color = vec3(dot(tex.rgb, vec3(0.567, 0.433, 0.0)),
+                     dot(tex.rgb, vec3(0.558, 0.442, 0.0)),
+                     dot(tex.rgb, vec3(0.0, 0.242, 0.758)));
+    } else if (vision < 2.5) {
+        color = vec3(dot(tex.rgb, vec3(0.625, 0.375, 0.0)),
+                     dot(tex.rgb, vec3(0.7, 0.3, 0.0)),
+                     dot(tex.rgb, vec3(0.0, 0.3, 0.7)));
+    } else if (vision < 3.5) {
+        color = vec3(dot(tex.rgb, vec3(0.95, 0.05, 0.0)),
+                     dot(tex.rgb, vec3(0.0, 0.433, 0.567)),
+                     dot(tex.rgb, vec3(0.0, 0.475, 0.525)));
+    } else {
+        color = vec3(dot(tex.rgb, vec3(0.299, 0.587, 0.114)));
+    }
+    COLOR = vec4(clamp(color, 0.0, 1.0), tex.a);
+}

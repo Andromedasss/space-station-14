@@ -70,6 +70,13 @@ public sealed partial class GunSystem : SharedGunSystem
         var mapDirection = toMap - fromMap.Position;
         var mapAngle = mapDirection.ToAngle();
         var angle = GetRecoilAngle(Timing.CurTime, gun, mapDirection.ToAngle());
+        if (TryComp<Content.Shared.Medical.PhysiologyComponent>(user, out var physiology)
+            && physiology.CognitiveSymptoms.HasFlag(Content.Shared.Medical.MedicalCognitiveSymptoms.Tremor))
+        {
+            var tremor = Random.NextAngle(Angle.FromDegrees(-6), Angle.FromDegrees(6));
+            angle += tremor;
+            mapAngle += tremor;
+        }
 
         // If applicable, this ensures the projectile is parented to grid on spawn, instead of the map.
         var fromEnt = Maps.TryFindGridAt(fromMap, out var gridUid, out _)

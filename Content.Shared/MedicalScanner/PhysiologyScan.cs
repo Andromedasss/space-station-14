@@ -1,3 +1,4 @@
+using Content.Shared.Medical;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.MedicalScanner;
@@ -8,6 +9,10 @@ namespace Content.Shared.MedicalScanner;
 [Serializable, NetSerializable]
 public sealed class PhysiologyScan
 {
+    public bool Detailed;
+    public bool InternalWarning;
+    public bool NeurologicalWarning;
+    public List<WoundHygieneScan> WoundHygiene = new();
     public float HeartFunction;
     public float KidneyFunction;
     public float LiverFunction;
@@ -30,6 +35,15 @@ public sealed class PhysiologyScan
     public float OxygenDebt;
     public float BrainDamage;
     public bool BrainMissing;
+    public MedicalColorVision NeurologicalVision;
+    public bool Aphasia;
+    public bool MuscleWeakness;
+    public MedicalCognitiveSymptoms CognitiveSymptoms;
+    public MedicalPhobia Phobia;
+    public float Fear;
+    public float NeurorestorativeDose;
+    public float AnxiolyticDose;
+    public List<NeurologicalConditionScan> NeurologicalConditions = new();
     public float Mobility;
     public float PainBurden;
     public float Pain;
@@ -61,3 +75,9 @@ public sealed record SurgicalAccessScan(string Category, int Stage);
 
 [Serializable, NetSerializable]
 public sealed record VascularInjuryScan(string Category, float Damage, float InternalBleeding);
+
+[Serializable, NetSerializable]
+public sealed record NeurologicalConditionScan(MedicalNeurologicalCondition Condition, float RecoverySeconds);
+
+[Serializable, NetSerializable]
+public sealed record WoundHygieneScan(string Category, float Contamination, float Infection, float ProtectionSeconds);

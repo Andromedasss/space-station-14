@@ -1,5 +1,59 @@
 # Explicit opt-in: ordinary crew continue using upstream medicine.
 - type: entity
+  parent: BaseItem
+  id: MedicalTestAntiseptic
+  name: experimental antiseptic applicator
+  suffix: Experimental Physiology
+  description: Apply to a selected surgical site on an operating table. Removes contamination and protects the site from ambient exposure for two minutes. Does not cure established infection; use an antibiotic. Reusable.
+  components:
+  - type: Sprite
+    sprite: Objects/Specific/Medical/medical.rsi
+    state: gauze
+  - type: MedicalSurgeryTool
+    action: Disinfect
+    delay: 4
+
+- type: entity
+  parent: BaseMachinePowered
+  id: MedicalTestSterilizer
+  name: experimental instrument sterilizer
+  suffix: Experimental Physiology
+  description: Apply a surgical instrument to this powered machine to sterilize it before reuse. Uses a placeholder microwave sprite.
+  components:
+  - type: Sprite
+    sprite: Structures/Machines/microwave.rsi
+    state: mw0
+  - type: MedicalSterilizer
+  - type: ApcPowerReceiver
+    powerLoad: 100
+
+- type: reagent
+  id: MedicalTestAntibiotic
+  name: reagent-name-medical-test-antibiotic
+  desc: reagent-desc-medical-test-antibiotic
+  physicalDesc: reagent-physical-desc-translucent
+  group: Medicine
+  flavor: medicine
+  color: "#d5b875"
+  metabolisms:
+    Bloodstream:
+      metabolismRate: 0.05
+      effects: []
+
+- type: entity
+  parent: ChemicalMedipen
+  id: MedicalTestAntibioticMedipen
+  name: experimental antibiotic injector
+  suffix: Experimental Physiology
+  description: Delivers 5 units. At least 2 units in the bloodstream reduce surgical contamination and infection. Clean the site, close it and monitor recovery. Does not repair tissue or stop contamination from perforated intestines.
+  components:
+  - type: Solution
+    solution:
+      reagents:
+      - ReagentId: MedicalTestAntibiotic
+        Quantity: 5
+
+- type: entity
   parent: Medkit
   id: MedicalTestOrganCase
   name: experimental organ preservation case
@@ -107,6 +161,69 @@
       reagents:
       - ReagentId: MedicalTestInotrope
         Quantity: 5
+
+- type: reagent
+  id: MedicalTestNeurorestorative
+  name: reagent-name-medical-test-neurorestorative
+  desc: reagent-desc-medical-test-neurorestorative
+  physicalDesc: reagent-physical-desc-translucent
+  group: Medicine
+  flavor: medicine
+  color: "#5cbed1"
+  metabolisms:
+    Bloodstream:
+      metabolismRate: 0.05
+      effects: []
+
+- type: entity
+  parent: ChemicalMedipen
+  id: MedicalTestNeurorestorativeMedipen
+  name: experimental neurorestorative injector
+  suffix: Experimental Physiology
+  description: Delivers 5 units. At least 2 units in the bloodstream accelerate temporary neurological recovery fourfold. Each neurosurgical rehabilitation consumes 2 units. Does not repair tissue damage or brain death.
+  components:
+  - type: Solution
+    solution:
+      reagents:
+      - ReagentId: MedicalTestNeurorestorative
+        Quantity: 5
+
+- type: reagent
+  id: MedicalTestAnxiolytic
+  name: reagent-name-medical-test-anxiolytic
+  desc: reagent-desc-medical-test-anxiolytic
+  physicalDesc: reagent-physical-desc-translucent
+  group: Medicine
+  flavor: medicine
+  color: "#82bf9b"
+  metabolisms:
+    Bloodstream:
+      metabolismRate: 0.1
+      effects: []
+
+- type: entity
+  parent: ChemicalMedipen
+  id: MedicalTestAnxiolyticMedipen
+  name: experimental anxiolytic injector
+  suffix: Experimental Physiology
+  description: Delivers 5 units. At least 2 units in the bloodstream prevent exposure from building phobic stress. Existing stress subsides normally. Does not cure the phobia or end an existing faint. Extra doses give no additional benefit.
+  components:
+  - type: Solution
+    solution:
+      reagents:
+      - ReagentId: MedicalTestAnxiolytic
+        Quantity: 5
+
+- type: entity
+  parent: Drill
+  id: MedicalTestNeuralRehabilitationTool
+  name: experimental neural rehabilitation probe
+  suffix: Experimental Physiology
+  description: Apply to the exposed brain of a stable experimental patient on an operating table. Requires 2 units of neurorestorative in the bloodstream, consumed on completion. Converts one persistent deficit into a temporary deficit with two minutes of supported recovery. Does not repair tissue damage or brain death.
+  components:
+  - type: MedicalSurgeryTool
+    action: RehabilitateNeurology
+    delay: 20
 
 - type: entity
   parent: OperatingTable

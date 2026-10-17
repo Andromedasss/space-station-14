@@ -17,7 +17,11 @@ public sealed class MedicalDebugCommand : IConsoleCommand
     public string Description => "Inspect experimental physiology or apply logged test interventions.";
     public string Help => "medical <entity> [heart|lungs|kidneys|liver|intestines|blood|bleeding|temperature <value>]\n"
         + "organ functions/blood: 0..1; bleeding: 0..10; temperature: 250..350 K. Inspect with medical <entity>.\n"
-        + "medical <entity> wound <part category, e.g. LegLeft> <Blunt|Slash|Piercing|Heat> <damage 0.01..1000>";
+        + "medical <entity> wound <part category, e.g. LegLeft> <Blunt|Slash|Piercing|Heat> <damage 0.01..1000>\n"
+        + "medical <entity> vision <0 normal|1 protanopia|2 deuteranopia|3 tritanopia|4 achromatopsia>\n"
+        + "medical <entity> aphasia|weakness <0|1> (logged debug overrides, not treatments)\n"
+        + "medical <entity> cognition <bitmask: 1 face recognition, 2 reading, 4 writing, 8 tremor, 16 dysmetria>\n"
+        + "medical <entity> phobia <0 none|1 doors|2 uniforms|3 blood|4 fire|5 corpses>";
 
     public void Execute(IConsoleShell shell, string argStr, string[] args)
     {

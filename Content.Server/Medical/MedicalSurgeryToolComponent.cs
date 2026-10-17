@@ -10,4 +10,7 @@ public sealed partial class MedicalSurgeryToolComponent : Component
 
     [DataField]
     public TimeSpan Delay = TimeSpan.FromSeconds(4);
+
+    [DataField]
+    public bool Sterile = true;
 }

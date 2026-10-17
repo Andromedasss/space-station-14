@@ -28,3 +28,6 @@ loginlocal = true
 
 [database]
 engine = "sqlite"
+
+[debug]
+station_power = true

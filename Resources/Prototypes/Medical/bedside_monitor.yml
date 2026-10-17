@@ -1,0 +1,19 @@
+- type: entity
+  parent: BaseMachinePowered
+  id: BedsideMonitor
+  name: bedside monitor
+  suffix: Experimental Physiology
+  description: Continuously monitors an experimental patient buckled within two tiles. Anchor and connect to station power. Uses a placeholder scanner sprite. Oxygen delivery is a game estimate, not SpO2.
+  components:
+  - type: Sprite
+    sprite: Structures/Machines/scanner.rsi
+    state: idle_unlit
+  - type: BedsideMonitor
+  - type: ApcPowerReceiver
+    powerLoad: 100
+  - type: ActivatableUI
+    key: enum.BedsideMonitorUiKey.Key
+  - type: UserInterface
+    interfaces:
+      enum.BedsideMonitorUiKey.Key:
+        type: BedsideMonitorBoundUserInterface

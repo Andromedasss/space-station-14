@@ -20,6 +20,8 @@ public enum MedicalSurgeryAction : byte
     SpreadBone,
     ApproximateBone,
     RepairBone,
+    RehabilitateNeurology,
+    Disinfect,
 }
 
 [Serializable, NetSerializable]

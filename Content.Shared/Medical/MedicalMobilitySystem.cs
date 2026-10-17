@@ -22,6 +22,8 @@ public sealed class MedicalMobilitySystem : EntitySystem
     {
         args.ModifySpeed(ent.Comp.Mobility);
         args.ModifySpeed(ent.Comp.TemperatureSpeed);
+        if (ent.Comp.MuscleWeakness)
+            args.ModifySpeed(NeurologicalTrauma.WeaknessSpeed);
         args.ModifySpeed(1f, PhysiologyModel.PainSprintModifier(ent.Comp.Pain));
     }
 }

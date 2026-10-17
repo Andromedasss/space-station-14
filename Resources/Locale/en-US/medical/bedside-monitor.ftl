@@ -1,0 +1,11 @@
+bedside-monitor-title = Bedside Monitor
+bedside-monitor-unpowered = No power / monitor unanchored
+bedside-monitor-no-patient = No experimental patient buckled nearby
+bedside-monitor-pulse = Pulse: {$value} bpm
+bedside-monitor-pressure = Blood pressure: {$value} mmHg (estimate)
+bedside-monitor-oxygen = Oxygen delivery: {$value}% (estimate, not SpO2)
+bedside-monitor-alarm-none = Vitals stable
+bedside-monitor-alarm-hypoxia = WARNING: Low oxygen delivery
+bedside-monitor-alarm-shock = WARNING: Low blood pressure / shock
+bedside-monitor-alarm-asystole = EMERGENCY: Asystole / no pulse
+bedside-monitor-alarm-fibrillation = EMERGENCY: Ventricular fibrillation

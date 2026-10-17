@@ -50,9 +50,24 @@ public sealed class MedicalPersistenceTest : GameTest
             var chest = body.EnumerateOrgans<MedicalWoundComponent>(patient).Single(p => p.Comp1.Category?.Id == "Torso");
             chest.Comp2.SurgicalAccess = 3;
             chest.Comp2.BoneAccess = 2;
+            chest.Comp2.Contamination = 35f;
+            chest.Comp2.Infection = 12f;
+            chest.Comp2.AntisepticSeconds = 80f;
+            leg.Comp2.Infection = 27f;
             var brain = body.EnumerateOrgans<CerebralHealthComponent>(patient).Single();
             brain.Comp2.Damage = 42f;
             brain.Comp2.OxygenDebt = 16f;
+            brain.Comp2.NeurologicalInjuryRemainder = 7.5f;
+            brain.Comp2.ColorVision = MedicalColorVision.Tritanopia;
+            brain.Comp2.Aphasia = true;
+            brain.Comp2.MuscleWeakness = true;
+            brain.Comp2.CognitiveSymptoms = (MedicalCognitiveSymptoms) 31;
+            brain.Comp2.Phobia = MedicalPhobia.Blood;
+            brain.Comp2.Fear = 72f;
+            brain.Comp2.FearUnconsciousSeconds = 3f;
+            brain.Comp2.FearRecoverySeconds = 33f;
+            brain.Comp2.RecoveryRemaining[MedicalNeurologicalCondition.Tremor] = 123f;
+            brain.Comp2.RecoveryRemaining[MedicalNeurologicalCondition.Phobia] = 45f;
             var heart = body.EnumerateOrgans<MedicalOrganComponent>(patient).Single(p => p.Comp2.Kind == MedicalOrganKind.Heart);
             heart.Comp2.Trauma = 30f;
             heart.Comp2.Fibrillating = true;
@@ -74,6 +89,8 @@ public sealed class MedicalPersistenceTest : GameTest
             SComp<MedicalOrganPreservationComponent>(organCase).RemainingSeconds = 123f;
             var bag = SSpawnAtPosition("MedicalTestAmbuBag", new EntityCoordinates(mapEntity, System.Numerics.Vector2.One));
             SComp<MedicalVentilationComponent>(bag).GasSupply.Clear();
+            var scalpel = SSpawnAtPosition("MedicalTestScalpel", new EntityCoordinates(mapEntity, System.Numerics.Vector2.One));
+            SComp<MedicalSurgeryToolComponent>(scalpel).Sterile = false;
             Assert.That(loader.TrySaveMap(mapId, path), Is.True);
             maps.DeleteMap(mapId);
             Assert.That(loader.TryLoadMap(path, out var loaded, out _), Is.True);
@@ -91,6 +108,11 @@ public sealed class MedicalPersistenceTest : GameTest
                 Assert.That(loadedChest.RequiresBoneAccess, Is.True);
                 Assert.That(loadedChest.SurgicalAccess, Is.EqualTo(3));
                 Assert.That(loadedChest.BoneAccess, Is.EqualTo(2));
+                Assert.That(loadedChest.Contamination, Is.EqualTo(35f));
+                Assert.That(loadedChest.Infection, Is.EqualTo(12f));
+                Assert.That(loadedChest.AntisepticSeconds, Is.EqualTo(80f));
+                Assert.That(SEntMan.EntityQuery<MedicalSurgeryToolComponent, TransformComponent>(true)
+                    .Single(p => p.Item2.MapID == loadedMap.Comp.MapId).Item1.Sterile, Is.False);
                 Assert.That(loadedChest.InternalsExposed, Is.True);
                 var loadedAbdomen = parts.Single(p => p.Comp1.Category?.Id == "Abdomen");
                 var abdominalOrgans = body.EnumerateOrgans<MedicalOrganComponent>(loadedPatient)
@@ -101,6 +123,17 @@ public sealed class MedicalPersistenceTest : GameTest
                 var loadedBrain = body.EnumerateOrgans<CerebralHealthComponent>(loadedPatient).Single();
                 Assert.That(loadedBrain.Comp2.Damage, Is.EqualTo(42f));
                 Assert.That(loadedBrain.Comp2.OxygenDebt, Is.EqualTo(16f));
+                Assert.That(loadedBrain.Comp2.NeurologicalInjuryRemainder, Is.EqualTo(7.5f));
+                Assert.That(loadedBrain.Comp2.ColorVision, Is.EqualTo(MedicalColorVision.Tritanopia));
+                Assert.That(loadedBrain.Comp2.Aphasia && loadedBrain.Comp2.MuscleWeakness, Is.True);
+                Assert.That(loadedBrain.Comp2.CognitiveSymptoms, Is.EqualTo((MedicalCognitiveSymptoms) 31));
+                Assert.That(loadedBrain.Comp2.Phobia, Is.EqualTo(MedicalPhobia.Blood));
+                Assert.That(loadedBrain.Comp2.Fear, Is.EqualTo(72f));
+                Assert.That(loadedBrain.Comp2.FearUnconsciousSeconds, Is.EqualTo(3f));
+                Assert.That(loadedBrain.Comp2.FearRecoverySeconds, Is.EqualTo(33f));
+                Assert.That(loadedBrain.Comp2.RecoveryRemaining[MedicalNeurologicalCondition.Tremor], Is.EqualTo(123f));
+                Assert.That(loadedBrain.Comp2.RecoveryRemaining[MedicalNeurologicalCondition.Phobia], Is.EqualTo(45f));
+                Assert.That(loadedBrain.Comp2.RecoveryRemaining.ContainsKey(MedicalNeurologicalCondition.Alexia), Is.False);
                 var loadedHeart = body.EnumerateOrgans<MedicalOrganComponent>(loadedPatient).Single(p => p.Comp2.Kind == MedicalOrganKind.Heart);
                 Assert.That(loadedHeart.Comp2.Trauma, Is.EqualTo(30f));
                 Assert.That(loadedHeart.Comp2.Fibrillating, Is.True);
@@ -128,12 +161,15 @@ public sealed class MedicalPersistenceTest : GameTest
                 Assert.That(detached.Item1.IschemiaDebt, Is.EqualTo(180f));
                 Assert.That(detached.Item1.Injury.GetTotal(), Is.EqualTo(FixedPoint2.New(60)));
                 Assert.That(detached.Item1.SurgicalAccess, Is.EqualTo(3));
+                Assert.That(detached.Item1.Infection, Is.EqualTo(27f));
                 Assert.That(containers.GetContainer(detached.Item1.Owner, "medical_detached_parts").ContainedEntities.Count, Is.EqualTo(1));
                 var loadedBed = SEntMan.EntityQuery<MedicalLifeSupportComponent, TransformComponent>(true)
                     .Single(p => p.Item2.MapID == loadedMap.Comp.MapId);
                 Assert.That(loadedBed.Item1.GasSupply.TotalMoles, Is.Zero);
                 Assert.That(containers.Insert(detached.Item1.Owner, containers.GetContainer(loadedPatient, BodyComponent.ContainerID)), Is.True);
                 Assert.That(body.EnumerateOrgans<MedicalWoundComponent>(loadedPatient).Count(), Is.EqualTo(12));
+                Assert.That(body.EnumerateOrgans<MedicalWoundComponent>(loadedPatient)
+                    .Single(p => p.Comp1.Category?.Id == "LegLeft").Comp2.Infection, Is.EqualTo(27f));
             }
             finally
             {

@@ -38,6 +38,7 @@ public sealed class PhysiologySystem : EntitySystem
     [Dependency] private MedicalOrganViabilitySystem _viability = default!;
     [Dependency] private MovementSpeedModifierSystem _movement = default!;
     [Dependency] private TemperatureSystem _temperature = default!;
+    [Dependency] private MedicalNeurologySystem _neurology = default!;
 
     public override void Initialize()
     {
@@ -70,8 +71,10 @@ public sealed class PhysiologySystem : EntitySystem
                 && HasComp<PhysiologyStateComponent>(host) && HasComp<BodyComponent>(host)
                 && HasComp<MobStateComponent>(host))
                 continue;
+            var previousDamage = brain.Damage;
             (brain.OxygenDebt, brain.Damage) = PhysiologyModel.Advance(
                 brain.OxygenDebt, brain.Damage, 0f, _viability.ExposureSeconds(brainUid, frameTime));
+            _neurology.AddInjury((brainUid, brain), brain.Damage - previousDamage);
         }
     }
 
@@ -92,6 +95,7 @@ public sealed class PhysiologySystem : EntitySystem
         Sample(uid, body, state);
         AdvanceAbdominalPhysiology(uid, state, seconds);
         var physiology = Comp<PhysiologyComponent>(uid);
+        _neurology.Refresh(uid);
         var speed = PhysiologyModel.TemperatureMobility(state.Temperature);
         if (Math.Abs(physiology.TemperatureSpeed - speed) > 0.01f)
         {
@@ -103,13 +107,17 @@ public sealed class PhysiologySystem : EntitySystem
         foreach (var organ in _body.EnumerateOrgans<CerebralHealthComponent>((uid, body)))
         {
             brain = organ.Comp2;
+            var previousDamage = brain.Damage;
             (brain.OxygenDebt, brain.Damage) = PhysiologyModel.Advance(
                 brain.OxygenDebt, brain.Damage, state.OxygenDelivery / state.MetabolicDemand,
                 seconds * state.MetabolicDemand);
             // Extreme temperatures remain lethal; hypothermia is not indefinite preservation.
             brain.Damage = Math.Clamp(brain.Damage + seconds *
                 (Math.Max(0f, 288.15f - state.Temperature) * 0.1f
-                 + Math.Max(0f, state.Temperature - 315.15f) * 0.2f), 0f, 100f);
+                  + Math.Max(0f, state.Temperature - 315.15f) * 0.2f), 0f, 100f);
+            _neurology.AddInjury((organ.Owner, brain), brain.Damage - previousDamage);
+            _neurology.AdvanceRecovery(uid, brain, seconds);
+            _neurology.AdvanceFear(uid, brain, seconds);
             // The prototype provides one brain. Multiple brains are not supported yet.
             break;
         }
@@ -117,7 +125,7 @@ public sealed class PhysiologySystem : EntitySystem
         var targetState = brain == null || brain.Damage >= PhysiologyModel.MaximumBrainDamage
             ? MobState.Dead
             : brain.OxygenDebt >= PhysiologyModel.UnconsciousDebt || brain.Damage >= PhysiologyModel.UnconsciousBrainDamage
-                || _sedation.IsSedated(uid)
+                || _sedation.IsSedated(uid) || brain.FearUnconsciousSeconds > 0f
                 ? MobState.Critical
                 : MobState.Alive;
 
@@ -212,6 +220,9 @@ public sealed class PhysiologySystem : EntitySystem
                 "MedicalTestAnalgesic" => OrganFunction(ent, MedicalOrganKind.Kidney),
                 "MedicalTestInotrope" => OrganFunction(ent, MedicalOrganKind.Kidney),
                 "MedicalTestSedative" => OrganFunction(ent, MedicalOrganKind.Liver),
+                "MedicalTestNeurorestorative" => OrganFunction(ent, MedicalOrganKind.Kidney),
+                "MedicalTestAnxiolytic" => OrganFunction(ent, MedicalOrganKind.Liver),
+                "MedicalTestAntibiotic" => OrganFunction(ent, MedicalOrganKind.Kidney),
                 _ => 1f,
             };
             args.Multiplier *= clearance;
@@ -248,7 +259,7 @@ public sealed class PhysiologySystem : EntitySystem
             ((perforated ? 0.2f : 0f) - 0.04f * state.LiverFunction), 0f, 100f);
     }
 
-    public PhysiologyScan? Scan(EntityUid uid)
+    public PhysiologyScan? Scan(EntityUid uid, bool detailed = true)
     {
         if (!HasComp<PhysiologyComponent>(uid) || !TryComp<BodyComponent>(uid, out var body)
             || !TryComp<PhysiologyStateComponent>(uid, out var state))
@@ -258,6 +269,7 @@ public sealed class PhysiologySystem : EntitySystem
         var pain = _pain.Sample(uid);
         var result = new PhysiologyScan
         {
+            Detailed = detailed,
             SedativeDose = _sedation.Dose(uid),
             RespiratoryDrive = _sedation.RespiratoryDrive(uid),
             Sedated = _sedation.IsSedated(uid),
@@ -284,12 +296,24 @@ public sealed class PhysiologySystem : EntitySystem
             OxygenDelivery = state.OxygenDelivery,
             Mobility = Comp<PhysiologyComponent>(uid).Mobility,
             BrainMissing = true,
+            NeurorestorativeDose = _neurology.Dose(uid, "MedicalTestNeurorestorative"),
+            AnxiolyticDose = _neurology.Dose(uid, "MedicalTestAnxiolytic"),
         };
         foreach (var organ in _body.EnumerateOrgans<CerebralHealthComponent>((uid, body)))
         {
             result.BrainMissing = false;
             result.OxygenDebt = organ.Comp2.OxygenDebt;
             result.BrainDamage = organ.Comp2.Damage;
+            result.NeurologicalVision = organ.Comp2.ColorVision;
+            result.Aphasia = organ.Comp2.Aphasia;
+            result.MuscleWeakness = organ.Comp2.MuscleWeakness;
+            result.CognitiveSymptoms = organ.Comp2.CognitiveSymptoms;
+            result.Phobia = organ.Comp2.Phobia;
+            result.Fear = organ.Comp2.Fear;
+            foreach (var condition in Enum.GetValues<MedicalNeurologicalCondition>())
+                if (MedicalNeurologySystem.HasCondition(organ.Comp2, condition))
+                    result.NeurologicalConditions.Add(new NeurologicalConditionScan(condition,
+                        organ.Comp2.RecoveryRemaining.GetValueOrDefault(condition)));
             break;
         }
         foreach (var part in _body.EnumerateOrgans<MedicalWoundComponent>((uid, body)))
@@ -307,6 +331,9 @@ public sealed class PhysiologySystem : EntitySystem
                     part.Comp2.VascularDamage, MedicalWoundSystem.InternalBleeding(part.Comp2)));
             if (part.Comp2.SurgicalAccess > 0)
                 result.SurgicalSites.Add(new SurgicalAccessScan(part.Comp1.Category?.Id ?? "Unknown", part.Comp2.SurgicalAccess));
+            if (part.Comp2.SurgicalAccess > 0 || part.Comp2.Contamination > 0f || part.Comp2.Infection > 0f)
+                result.WoundHygiene.Add(new WoundHygieneScan(part.Comp1.Category?.Id ?? "Unknown",
+                    part.Comp2.Contamination, part.Comp2.Infection, part.Comp2.AntisepticSeconds));
             if (part.Comp2.BoneAccess > 0)
                 result.BoneSites.Add(new SurgicalAccessScan(part.Comp1.Category?.Id ?? "Unknown", part.Comp2.BoneAccess));
             if (part.Comp2.Injury.GetTotal() > 0 || part.Comp2.Bleeding > 0f)
@@ -322,6 +349,33 @@ public sealed class PhysiologySystem : EntitySystem
                 result.StorageInjuries.Add(new InternalOrganInjuryScan(organ.Comp1.Category?.Id ?? "Unknown", viability.Damage));
             if (organ.Comp2.Trauma > 0f)
                 result.OrganInjuries.Add(new InternalOrganInjuryScan(organ.Comp1.Category?.Id ?? "Unknown", organ.Comp2.Trauma));
+        }
+        result.InternalWarning = result.OrganInjuries.Count > 0 || result.StorageInjuries.Count > 0
+            || result.VascularInjuries.Count > 0 || result.Fractures.Count > 0
+            || result.Contamination > 20f || result.RenalWaste > 20f || result.HepaticWaste > 20f
+            || result.HeartFunction < 0.9f || result.LungFunction < 0.9f
+            || result.KidneyFunction < 0.9f || result.LiverFunction < 0.9f || result.IntestinalFunction < 0.9f;
+        result.NeurologicalWarning = result.BrainMissing || result.BrainDamage > 0f || result.OxygenDebt >= PhysiologyModel.UnconsciousDebt
+            || result.NeurologicalConditions.Count > 0;
+        if (!detailed)
+        {
+            // Primary equipment must not transmit hidden pathology, even to a modified client.
+            result.HeartFunction = result.LungFunction = result.KidneyFunction = result.LiverFunction = result.IntestinalFunction = 0f;
+            result.RenalWaste = result.HepaticWaste = result.Contamination = result.MetabolicDemand = 0f;
+            result.OxygenDebt = result.BrainDamage = result.PainBurden = 0f;
+            result.BrainMissing = false;
+            result.NeurologicalVision = MedicalColorVision.Normal;
+            result.Aphasia = result.MuscleWeakness = false;
+            result.CognitiveSymptoms = MedicalCognitiveSymptoms.None;
+            result.Phobia = MedicalPhobia.None;
+            result.Fear = result.NeurorestorativeDose = result.AnxiolyticDose = 0f;
+            result.NeurologicalConditions.Clear();
+            result.OrganInjuries.Clear();
+            result.StorageInjuries.Clear();
+            result.BoneSites.Clear();
+            result.OrganFunctions.Clear();
+            result.Fractures.Clear();
+            result.VascularInjuries.Clear();
         }
         return result;
     }
@@ -359,6 +413,13 @@ public sealed class PhysiologySystem : EntitySystem
         {
             hasBrain = true;
             text.AppendLine($"Brain {GetNetEntity(organ.Owner)}: debt={organ.Comp2.OxygenDebt:F2}s; injury={organ.Comp2.Damage:F2}/100; irreversible={organ.Comp2.Damage >= PhysiologyModel.MaximumBrainDamage}");
+            text.AppendLine($"Neurology: vision={organ.Comp2.ColorVision}; expressive aphasia={organ.Comp2.Aphasia}; muscle weakness={organ.Comp2.MuscleWeakness}");
+            text.AppendLine($"Cognition: {organ.Comp2.CognitiveSymptoms}; phobia={organ.Comp2.Phobia}; stress={organ.Comp2.Fear:F0}/100");
+            foreach (var condition in Enum.GetValues<MedicalNeurologicalCondition>())
+                if (MedicalNeurologySystem.HasCondition(organ.Comp2, condition))
+                    text.AppendLine(organ.Comp2.RecoveryRemaining.TryGetValue(condition, out var remaining)
+                        ? $"  {condition}: temporary, {remaining:F1}s supported recovery remaining"
+                        : $"  {condition}: persistent, neural rehabilitation required");
         }
         if (!hasBrain)
             text.AppendLine("No supported brain: body cannot be revived without transplantation.");
@@ -389,6 +450,54 @@ public sealed class PhysiologySystem : EntitySystem
 
         switch (parameter)
         {
+            case "cognition":
+            case "phobia":
+                if (value != MathF.Truncate(value) || value < 0f || value > (parameter == "cognition" ? 31f : 5f))
+                    return false;
+                var cognitiveBrain = _body.EnumerateOrgans<CerebralHealthComponent>((uid, body)).FirstOrDefault();
+                if (cognitiveBrain.Comp2 == null)
+                    return false;
+                if (parameter == "cognition")
+                {
+                    for (var i = 3; i <= 7; i++)
+                        cognitiveBrain.Comp2.RecoveryRemaining.Remove((MedicalNeurologicalCondition) i);
+                    cognitiveBrain.Comp2.CognitiveSymptoms = (MedicalCognitiveSymptoms) (int) value;
+                }
+                else
+                {
+                    cognitiveBrain.Comp2.RecoveryRemaining.Remove(MedicalNeurologicalCondition.Phobia);
+                    cognitiveBrain.Comp2.Phobia = (MedicalPhobia) (int) value;
+                    cognitiveBrain.Comp2.Fear = cognitiveBrain.Comp2.FearUnconsciousSeconds = 0f;
+                    cognitiveBrain.Comp2.FearSampleSeconds = cognitiveBrain.Comp2.FearRecoverySeconds = 0f;
+                    cognitiveBrain.Comp2.VisibleFearTriggers = 0;
+                }
+                _neurology.Refresh(uid);
+                break;
+            case "vision":
+            case "aphasia":
+            case "weakness":
+                if (value != MathF.Truncate(value) || value < 0f || value > (parameter == "vision" ? 4f : 1f))
+                    return false;
+                var brain = _body.EnumerateOrgans<CerebralHealthComponent>((uid, body)).FirstOrDefault();
+                if (brain.Comp2 == null)
+                    return false;
+                if (parameter == "vision")
+                {
+                    brain.Comp2.RecoveryRemaining.Remove(MedicalNeurologicalCondition.ColorVision);
+                    brain.Comp2.ColorVision = (MedicalColorVision) (int) value;
+                }
+                else if (parameter == "aphasia")
+                {
+                    brain.Comp2.RecoveryRemaining.Remove(MedicalNeurologicalCondition.Aphasia);
+                    brain.Comp2.Aphasia = value == 1f;
+                }
+                else
+                {
+                    brain.Comp2.RecoveryRemaining.Remove(MedicalNeurologicalCondition.Weakness);
+                    brain.Comp2.MuscleWeakness = value == 1f;
+                }
+                _neurology.Refresh(uid);
+                break;
             case "heart":
             case "lungs":
             case "kidneys":
@@ -451,6 +560,7 @@ public sealed class PhysiologySystem : EntitySystem
     {
         ent.Comp.Damage = 0f;
         ent.Comp.OxygenDebt = 0f;
+        _neurology.Reset(ent);
     }
 
     private void OnOrganRejuvenate(Entity<MedicalOrganComponent> ent, ref RejuvenateEvent args)
@@ -469,7 +579,7 @@ public sealed class PhysiologySystem : EntitySystem
             if (organ.Comp2.Damage < PhysiologyModel.MaximumBrainDamage)
                 expected = organ.Comp2.OxygenDebt >= PhysiologyModel.UnconsciousDebt
                     || organ.Comp2.Damage >= PhysiologyModel.UnconsciousBrainDamage
-                    || _sedation.IsSedated(ent.Owner)
+                    || _sedation.IsSedated(ent.Owner) || organ.Comp2.FearUnconsciousSeconds > 0f
                     ? MobState.Critical
                     : MobState.Alive;
             break;
@@ -485,6 +595,7 @@ public sealed class PhysiologySystem : EntitySystem
         {
             organ.Comp2.Damage = 0f;
             organ.Comp2.OxygenDebt = 0f;
+            _neurology.Reset((organ.Owner, organ.Comp2));
         }
         foreach (var organ in _body.EnumerateOrgans<MedicalOrganComponent>(ent.Owner))
         {

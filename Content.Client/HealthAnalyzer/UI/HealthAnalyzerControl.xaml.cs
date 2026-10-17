@@ -56,10 +56,16 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
             || !_entityManager.TryGetComponent<DamageableComponent>(target, out var damageable))
         {
             NoPatientDataText.Visible = true;
+            PatientDataContainer.Visible = false;
+            GroupsContainer.RemoveAllChildren();
+            AlertsContainer.RemoveAllChildren();
+            AlertsContainer.Visible = false;
+            AlertsDivider.Visible = false;
             return;
         }
 
         NoPatientDataText.Visible = false;
+        PatientDataContainer.Visible = true;
 
         // Scan Mode
 
@@ -108,83 +114,142 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
         if (state.Physiology is { } physiology)
         {
             PhysiologyContainer.Visible = true;
+            foreach (var wound in physiology.WoundHygiene)
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-wound-hygiene",
+                    ("part", wound.Category), ("contamination", wound.Contamination.ToString("F0")),
+                    ("infection", wound.Infection.ToString("F0")), ("seconds", wound.ProtectionSeconds.ToString("F0")))));
             PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-title")));
             PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-vitals",
                 ("pulse", physiology.Pulse.ToString("F0")), ("systolic", physiology.Systolic.ToString("F0")),
                 ("diastolic", physiology.Diastolic.ToString("F0")))));
-            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-abdominal-function",
-                ("kidneys", (physiology.KidneyFunction * 100f).ToString("F0")),
-                ("liver", (physiology.LiverFunction * 100f).ToString("F0")),
-                ("gut", (physiology.IntestinalFunction * 100f).ToString("F0")))));
-            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-systemic-waste",
-                ("renal", physiology.RenalWaste.ToString("F1")), ("hepatic", physiology.HepaticWaste.ToString("F1")),
-                ("contamination", physiology.Contamination.ToString("F1")))));
-            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-metabolic-demand",
-                ("demand", (physiology.MetabolicDemand * 100f).ToString("F0")))));
-            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-wounds")));
-            if (physiology.Injuries.Count == 0)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-no-wounds")));
-            foreach (var injury in physiology.Injuries)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-injury",
-                    ("part", injury.Category), ("damage", injury.Damage.ToString("F2")),
-                    ("bleeding", injury.Bleeding.ToString("F2")))));
-            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-organs",
-                ("heart", (physiology.HeartFunction * 100).ToString("F0")),
-                ("lungs", (physiology.LungFunction * 100).ToString("F0")))));
-            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-delivery",
-                ("delivery", (physiology.OxygenDelivery * 100).ToString("F0")))));
-            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-mobility",
-                ("mobility", (physiology.Mobility * 100).ToString("F0")))));
-            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-pain-scan",
-                ("burden", physiology.PainBurden.ToString("F0")), ("pain", physiology.Pain.ToString("F0")),
-                ("dose", physiology.AnalgesicDose.ToString("F1")))));
-            var brainStatus = physiology.BrainMissing ? "health-analyzer-physiology-brain-missing"
-                : physiology.Sedated && physiology.BrainDamage < PhysiologyModel.MaximumBrainDamage ? "medical-sedated-brain"
-                : physiology.BrainDamage >= PhysiologyModel.MaximumBrainDamage ? "health-analyzer-physiology-brain-dead"
-                : "health-analyzer-physiology-brain";
-            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString(brainStatus,
-                ("debt", physiology.OxygenDebt.ToString("F1")), ("damage", physiology.BrainDamage.ToString("F1")))));
-            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-sedation-scan",
-                ("dose", physiology.SedativeDose.ToString("F1")), ("drive", (physiology.RespiratoryDrive * 100f).ToString("F0")))));
-            foreach (var injury in physiology.OrganInjuries)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-organ-injury",
-                    ("organ", injury.Category), ("trauma", injury.Trauma.ToString("F2")))));
-            foreach (var injury in physiology.StorageInjuries)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-organ-storage-scan",
-                    ("organ", injury.Category), ("damage", injury.Trauma.ToString("F1")))));
-            foreach (var site in physiology.SurgicalSites)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-surgery-access",
-                    ("part", site.Category), ("stage", site.Stage))));
-            foreach (var site in physiology.BoneSites)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-bone-site",
-                    ("part", site.Category), ("stage", site.Stage))));
-            foreach (var organ in physiology.OrganFunctions)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-organ-function",
-                    ("organ", organ.Category), ("function", organ.Trauma.ToString("F1")))));
-            foreach (var part in physiology.Fractures)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-fracture", ("part", part))));
-            if (physiology.LifeSupport)
+            if (!physiology.Detailed)
             {
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-life-support",
-                    ("circulation", (physiology.CirculatoryFunction * 100f).ToString("F1")))));
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-life-support-gas",
-                    ("moles", physiology.LifeSupportGasMoles.ToString("F2")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-primary-scan")));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-delivery",
+                    ("delivery", (physiology.OxygenDelivery * 100).ToString("F0")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-primary-pain", ("pain", physiology.Pain.ToString("F0")))));
+                if (physiology.InternalWarning)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-primary-internal-warning")));
+                if (physiology.NeurologicalWarning)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-primary-neurological-warning")));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-wounds")));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-mobility",
+                    ("mobility", (physiology.Mobility * 100).ToString("F0")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-sedation-scan",
+                    ("dose", physiology.SedativeDose.ToString("F1")), ("drive", (physiology.RespiratoryDrive * 100f).ToString("F0")))));
+                foreach (var injury in physiology.Injuries)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-injury",
+                        ("part", injury.Category), ("damage", injury.Damage.ToString("F2")), ("bleeding", injury.Bleeding.ToString("F2")))));
+                foreach (var site in physiology.SurgicalSites)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-surgery-access", ("part", site.Category), ("stage", site.Stage))));
+                if (physiology.LifeSupport)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-life-support-gas", ("moles", physiology.LifeSupportGasMoles.ToString("F2")))));
+                if (physiology.CprActive)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-cpr-active")));
+                if (physiology.ShockableRhythm)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-shockable-rhythm")));
             }
-            if (physiology.CprActive)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-cpr-active")));
-            if (physiology.ShockableRhythm)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-shockable-rhythm")));
-            if (physiology.InotropeDose > 0f)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-inotrope-dose",
-                    ("dose", physiology.InotropeDose.ToString("F1")))));
-            foreach (var part in physiology.NecroticParts)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-necrosis", ("part", part))));
-            foreach (var part in physiology.ProstheticParts)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-prosthetic", ("part", part))));
-            foreach (var injury in physiology.VascularInjuries)
-                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-vascular-injury",
-                    ("part", injury.Category), ("damage", injury.Damage.ToString("F1")),
-                    ("bleeding", injury.InternalBleeding.ToString("F2")))));
+            else
+            {
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-abdominal-function",
+                    ("kidneys", (physiology.KidneyFunction * 100f).ToString("F0")),
+                    ("liver", (physiology.LiverFunction * 100f).ToString("F0")),
+                    ("gut", (physiology.IntestinalFunction * 100f).ToString("F0")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-systemic-waste",
+                    ("renal", physiology.RenalWaste.ToString("F1")), ("hepatic", physiology.HepaticWaste.ToString("F1")),
+                    ("contamination", physiology.Contamination.ToString("F1")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-metabolic-demand",
+                    ("demand", (physiology.MetabolicDemand * 100f).ToString("F0")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-wounds")));
+                if (physiology.Injuries.Count == 0)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-no-wounds")));
+                foreach (var injury in physiology.Injuries)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-injury",
+                        ("part", injury.Category), ("damage", injury.Damage.ToString("F2")),
+                        ("bleeding", injury.Bleeding.ToString("F2")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-organs",
+                    ("heart", (physiology.HeartFunction * 100).ToString("F0")),
+                    ("lungs", (physiology.LungFunction * 100).ToString("F0")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-delivery",
+                    ("delivery", (physiology.OxygenDelivery * 100).ToString("F0")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-mobility",
+                    ("mobility", (physiology.Mobility * 100).ToString("F0")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-pain-scan",
+                    ("burden", physiology.PainBurden.ToString("F0")), ("pain", physiology.Pain.ToString("F0")),
+                    ("dose", physiology.AnalgesicDose.ToString("F1")))));
+                var brainStatus = physiology.BrainMissing ? "health-analyzer-physiology-brain-missing"
+                    : physiology.Sedated && physiology.BrainDamage < PhysiologyModel.MaximumBrainDamage ? "medical-sedated-brain"
+                    : physiology.BrainDamage >= PhysiologyModel.MaximumBrainDamage ? "health-analyzer-physiology-brain-dead"
+                    : "health-analyzer-physiology-brain";
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString(brainStatus,
+                    ("debt", physiology.OxygenDebt.ToString("F1")), ("damage", physiology.BrainDamage.ToString("F1")))));
+                PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-sedation-scan",
+                    ("dose", physiology.SedativeDose.ToString("F1")), ("drive", (physiology.RespiratoryDrive * 100f).ToString("F0")))));
+                if (!physiology.BrainMissing)
+                {
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString(
+                        $"medical-neurology-vision-{physiology.NeurologicalVision.ToString().ToLowerInvariant()}")));
+                    if (physiology.Aphasia)
+                        PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-neurology-aphasia")));
+                    if (physiology.MuscleWeakness)
+                        PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-neurology-weakness")));
+                    foreach (var symptom in Enum.GetValues<Content.Shared.Medical.MedicalCognitiveSymptoms>())
+                        if (symptom != Content.Shared.Medical.MedicalCognitiveSymptoms.None && physiology.CognitiveSymptoms.HasFlag(symptom))
+                            PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString($"medical-neurology-{symptom.ToString().ToLowerInvariant()}")));
+                    if (physiology.Phobia != Content.Shared.Medical.MedicalPhobia.None)
+                        PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-neurology-phobia",
+                            ("trigger", Loc.GetString($"medical-phobia-{physiology.Phobia.ToString().ToLowerInvariant()}")),
+                            ("stress", physiology.Fear.ToString("F0")))));
+                }
+                foreach (var condition in physiology.NeurologicalConditions)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString(
+                        condition.RecoverySeconds > 0f ? "medical-neurology-course-temporary" : "medical-neurology-course-persistent",
+                        ("condition", Loc.GetString($"medical-neurology-condition-{condition.Condition.ToString().ToLowerInvariant()}")),
+                        ("seconds", condition.RecoverySeconds.ToString("F0")))));
+                if (physiology.NeurologicalConditions.Count > 0)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-neurology-treatment-scan",
+                        ("restorative", physiology.NeurorestorativeDose.ToString("F1")),
+                        ("anxiolytic", physiology.AnxiolyticDose.ToString("F1")))));
+                foreach (var injury in physiology.OrganInjuries)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("health-analyzer-physiology-organ-injury",
+                        ("organ", injury.Category), ("trauma", injury.Trauma.ToString("F2")))));
+                foreach (var injury in physiology.StorageInjuries)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-organ-storage-scan",
+                        ("organ", injury.Category), ("damage", injury.Trauma.ToString("F1")))));
+                foreach (var site in physiology.SurgicalSites)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-surgery-access",
+                        ("part", site.Category), ("stage", site.Stage))));
+                foreach (var site in physiology.BoneSites)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-bone-site",
+                        ("part", site.Category), ("stage", site.Stage))));
+                foreach (var organ in physiology.OrganFunctions)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-organ-function",
+                        ("organ", organ.Category), ("function", organ.Trauma.ToString("F1")))));
+                foreach (var part in physiology.Fractures)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-fracture", ("part", part))));
+                if (physiology.LifeSupport)
+                {
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-life-support",
+                        ("circulation", (physiology.CirculatoryFunction * 100f).ToString("F1")))));
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-life-support-gas",
+                        ("moles", physiology.LifeSupportGasMoles.ToString("F2")))));
+                }
+                if (physiology.CprActive)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-cpr-active")));
+                if (physiology.ShockableRhythm)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-shockable-rhythm")));
+                if (physiology.InotropeDose > 0f)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-inotrope-dose",
+                        ("dose", physiology.InotropeDose.ToString("F1")))));
+                foreach (var part in physiology.NecroticParts)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-necrosis", ("part", part))));
+                foreach (var part in physiology.ProstheticParts)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-prosthetic", ("part", part))));
+                foreach (var injury in physiology.VascularInjuries)
+                    PhysiologyContainer.AddChild(CreateDiagnosticItemLabel(Loc.GetString("medical-vascular-injury",
+                        ("part", injury.Category), ("damage", injury.Damage.ToString("F1")),
+                        ("bleeding", injury.InternalBleeding.ToString("F2")))));
+            }
         }
 
         // Total Damage

@@ -29,6 +29,7 @@ public sealed class MedicalWoundSystem : EntitySystem
     [Dependency] private MovementSpeedModifierSystem _movement = default!;
     [Dependency] private SharedHandsSystem _hands = default!;
     [Dependency] private MedicalHandSystem _medicalHands = default!;
+    [Dependency] private MedicalNeurologySystem _neurology = default!;
 
     private float _internalBleedingElapsed;
 
@@ -67,6 +68,7 @@ public sealed class MedicalWoundSystem : EntitySystem
             var rate = 0f;
             foreach (var part in _body.EnumerateOrgans<MedicalWoundComponent>(uid))
             {
+                AdvanceInfection(uid, part.Comp2, elapsed);
                 rate += InternalBleeding(part.Comp2);
                 if (part.Comp2.Prosthetic || part.Comp1.Category?.Id is not ("ArmLeft" or "ArmRight" or "HandLeft" or "HandRight"
                         or "LegLeft" or "LegRight" or "FootLeft" or "FootRight")
@@ -85,6 +87,21 @@ public sealed class MedicalWoundSystem : EntitySystem
             if (rate > 0f)
                 _blood.TryModifyBloodLevel((uid, blood), -FixedPoint2.New(Math.Min(rate, 10f) * elapsed));
         }
+    }
+
+    public void AdvanceInfection(EntityUid patient, MedicalWoundComponent wound, float seconds)
+    {
+        if (!float.IsFinite(seconds) || seconds <= 0f || wound.Prosthetic
+            || !HasComp<PhysiologyComponent>(patient) || !TryComp<PhysiologyStateComponent>(patient, out var state))
+            return;
+        var antibiotic = _neurology.Dose(patient, "MedicalTestAntibiotic") >= 2f;
+        // Protected time is integrated separately so a long update cannot bypass exposure.
+        var exposed = wound.SurgicalAccess > 0 ? Math.Max(0f, seconds - wound.AntisepticSeconds) : 0f;
+        wound.AntisepticSeconds = Math.Max(0f, wound.AntisepticSeconds - seconds);
+        wound.Contamination = Math.Clamp(wound.Contamination + exposed * 0.1f - (antibiotic ? seconds * 0.5f : 0f), 0f, 100f);
+        wound.Infection = Math.Clamp(wound.Infection + seconds *
+            (antibiotic ? -0.5f : wound.Contamination >= 20f ? 0.1f : -0.02f), 0f, 100f);
+        state.Contamination = Math.Clamp(state.Contamination + seconds * wound.Infection * 0.001f, 0f, 100f);
     }
 
     public static float InternalBleeding(MedicalWoundComponent wound)
@@ -139,7 +156,9 @@ public sealed class MedicalWoundSystem : EntitySystem
                         var trauma = PhysiologyModel.HeadTrauma(type.Id, previousInjury.Float(), amount.Float());
                         if (trauma <= 0f)
                             continue;
-                        brain.Comp2.Damage = Math.Clamp(brain.Comp2.Damage + trauma, 0f, PhysiologyModel.MaximumBrainDamage);
+                        var previousBrainDamage = brain.Comp2.Damage;
+                        brain.Comp2.Damage = Math.Clamp(previousBrainDamage + trauma, 0f, PhysiologyModel.MaximumBrainDamage);
+                        _neurology.AddInjury((brain.Owner, brain.Comp2), brain.Comp2.Damage - previousBrainDamage);
                         if (TryComp<PhysiologyStateComponent>(ent, out var history))
                             _physiology.Record(history, $"BRAIN mechanical trauma +{trauma:F2}; injury={brain.Comp2.Damage:F2}");
                     }
@@ -371,6 +390,7 @@ public sealed class MedicalWoundSystem : EntitySystem
         if (TryComp<MedicalWoundComponent>(args.Organ, out var wound))
             TransferAggregateDamage(ent, wound.Injury);
         Synchronize(ent);
+        _neurology.Refresh(ent);
     }
 
     private void OnRemoved(Entity<PhysiologyComponent> ent, ref OrganRemovedFromEvent args)
@@ -401,6 +421,7 @@ public sealed class MedicalWoundSystem : EntitySystem
             }
         }
         Synchronize(ent);
+        _neurology.Refresh(ent);
     }
 
     private void TransferAggregateDamage(EntityUid host, DamageSpecifier change)
@@ -422,6 +443,7 @@ public sealed class MedicalWoundSystem : EntitySystem
             part.Comp2.Injury = new DamageSpecifier();
             part.Comp2.Bleeding = 0f;
             part.Comp2.SurgicalAccess = 0;
+            part.Comp2.Contamination = part.Comp2.Infection = part.Comp2.AntisepticSeconds = 0f;
             part.Comp2.BoneAccess = 0;
             part.Comp2.Fractured = false;
             part.Comp2.VascularDamage = 0f;
@@ -439,6 +461,7 @@ public sealed class MedicalWoundSystem : EntitySystem
         ent.Comp.Injury = new DamageSpecifier();
         ent.Comp.Bleeding = 0f;
         ent.Comp.SurgicalAccess = 0;
+        ent.Comp.Contamination = ent.Comp.Infection = ent.Comp.AntisepticSeconds = 0f;
         ent.Comp.BoneAccess = 0;
         ent.Comp.Fractured = false;
         ent.Comp.VascularDamage = 0f;

@@ -223,7 +223,7 @@ public sealed partial class HealthAnalyzerSystem : EntitySystem
     /// </summary>
     /// <param name="target">The entity being scanned</param>
     /// <returns></returns>
-    public HealthAnalyzerUiState GetHealthAnalyzerUiState(EntityUid? target)
+    public HealthAnalyzerUiState GetHealthAnalyzerUiState(EntityUid? target, bool detailed = false)
     {
         if (!target.HasValue || !HasComp<DamageableComponent>(target))
             return new HealthAnalyzerUiState();
@@ -257,7 +257,7 @@ public sealed partial class HealthAnalyzerSystem : EntitySystem
             bleeding,
             unrevivable
         );
-        result.Physiology = EntityManager.System<PhysiologySystem>().Scan(entity);
+        result.Physiology = EntityManager.System<PhysiologySystem>().Scan(entity, detailed);
         return result;
     }
 }

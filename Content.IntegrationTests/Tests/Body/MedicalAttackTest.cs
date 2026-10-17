@@ -61,8 +61,9 @@ public sealed class MedicalAttackTest : InteractionTest
         await Client.WaitAssertion(() =>
         {
             var window = GetWindow<HealthAnalyzerWindow>();
-            Assert.That(GetControlFromChildren<Label>(l => l.Text != null && l.Text.StartsWith("Head: fracture"), window).Visible, Is.True);
-            Assert.That(GetControlFromChildren<Label>(l => l.Text != null && l.Text.StartsWith("Irreversible brain death"), window).Visible, Is.True);
+            Assert.That(GetControlFromChildren<Label>(l => l.Text != null && l.Text.StartsWith("Signs of possible internal"), window).Visible, Is.True);
+            Assert.That(GetControlFromChildren<Label>(l => l.Text != null && l.Text.StartsWith("Abnormal neurological"), window).Visible, Is.True);
+            Assert.That(TryGetControlFromChildren<Label>(l => l.Text != null && l.Text.StartsWith("Irreversible brain death"), window, out _), Is.False);
         });
     }
 

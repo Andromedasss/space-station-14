@@ -55,8 +55,7 @@ public sealed class MedicalPainTest : InteractionTest
         await Client.WaitAssertion(() =>
         {
             Assert.That(GetControlFromChildren<Label>(
-                l => l.Text != null && l.Text.StartsWith("Pain burden:"), GetWindow<HealthAnalyzerWindow>()).Text,
-                Does.Contain("experimental analgesic:"));
+                l => l.Text != null && l.Text.StartsWith("Reported pain:"), GetWindow<HealthAnalyzerWindow>()).Visible, Is.True);
             var patient = CEntMan.GetEntity(Target!.Value);
             var physiology = CEntMan.GetComponent<PhysiologyComponent>(patient);
             Assert.That(physiology.Pain, Is.InRange(40, 52));

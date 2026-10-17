@@ -20,6 +20,15 @@ public sealed partial class MedicalWoundComponent : Component
     [DataField]
     public int SurgicalAccess;
 
+    [DataField]
+    public float Contamination;
+
+    [DataField]
+    public float Infection;
+
+    [DataField]
+    public float AntisepticSeconds;
+
     // 0: intact, 1: sawn, 2: spread. Separate from traumatic fractures.
     [DataField]
     public int BoneAccess;

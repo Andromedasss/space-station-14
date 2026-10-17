@@ -28,4 +28,18 @@ public sealed partial class PhysiologyComponent : Component
 
     [DataField, AutoNetworkedField]
     public float TemperatureSpeed = 1f;
+
+    // Derived from the attached physical brain; never the source of persistent pathology.
+    [DataField, AutoNetworkedField]
+    public MedicalColorVision NeurologicalVision;
+
+    [DataField, AutoNetworkedField]
+    public bool Aphasia;
+
+    [DataField, AutoNetworkedField]
+    public bool MuscleWeakness;
+
+    [DataField, AutoNetworkedField] public MedicalCognitiveSymptoms CognitiveSymptoms;
+    [DataField, AutoNetworkedField] public MedicalPhobia Phobia;
+    [DataField, AutoNetworkedField] public int Fear;
 }

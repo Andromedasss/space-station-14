@@ -497,11 +497,14 @@ public sealed class PhysiologyTest : GameTest
         var scan = analyzer.GetHealthAnalyzerUiState(patient);
         Assert.That(scan.Physiology, Is.Not.Null);
         Assert.That(scan.Physiology!.HeartFunction, Is.Zero);
-        Assert.That(scan.Physiology.OxygenDebt, Is.EqualTo(16f));
+        Assert.That(scan.Physiology.OxygenDebt, Is.Zero);
+        Assert.That(scan.Physiology.InternalWarning && scan.Physiology.NeurologicalWarning, Is.True);
         Assert.That(scan.Physiology.Injuries.Single().Category, Is.EqualTo("LegLeft"));
         Assert.That(scan.Physiology.Injuries.Single().Bleeding, Is.EqualTo(4f).Within(0.001f));
         Assert.That(analyzer.GetHealthAnalyzerUiState(SSpawn("MobHuman")).Physiology, Is.Null);
         physiology.Update(140f);
-        Assert.That(analyzer.GetHealthAnalyzerUiState(patient).Physiology!.BrainDamage, Is.EqualTo(100f));
+        Assert.That(analyzer.GetHealthAnalyzerUiState(patient).Physiology!.BrainDamage, Is.Zero);
+        Assert.That(analyzer.GetHealthAnalyzerUiState(patient).Physiology!.NeurologicalWarning, Is.True);
+        Assert.That(analyzer.GetHealthAnalyzerUiState(patient, detailed: true).Physiology!.BrainDamage, Is.EqualTo(100f));
     }
 }

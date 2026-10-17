@@ -6,9 +6,12 @@ using Content.Shared.Database;
 using Content.Shared.DoAfter;
 using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Interaction;
+using Content.Shared.Interaction.Events;
 using Content.Shared.Medical;
 using Content.Shared.Popups;
 using Content.Shared.Verbs;
+using Content.Shared.Examine;
+using Content.Server.Power.EntitySystems;
 using Robust.Shared.Containers;
 
 namespace Content.Server.Medical;
@@ -31,6 +34,7 @@ public sealed class MedicalSurgerySystem : EntitySystem
     [Dependency] private ISharedAdminLogManager _admin = default!;
     [Dependency] private SharedPopupSystem _popup = default!;
     [Dependency] private MedicalTargetingSystem _targeting = default!;
+    [Dependency] private MedicalNeurologySystem _neurology = default!;
 
     public override void Initialize()
     {
@@ -39,6 +43,30 @@ public sealed class MedicalSurgerySystem : EntitySystem
         SubscribeLocalEvent<PhysiologyComponent, DoAfterAttemptEvent<MedicalSurgeryDoAfterEvent>>(OnAttempt);
         SubscribeLocalEvent<MedicalSurgeryToolComponent, AfterInteractEvent>(OnToolInteract);
         SubscribeLocalEvent<OrganComponent, AfterInteractEvent>(OnOrganInteract);
+        SubscribeLocalEvent<MedicalSterilizerComponent, InteractUsingEvent>(OnSterilize);
+        SubscribeLocalEvent<MedicalSurgeryToolComponent, ExaminedEvent>(OnToolExamined);
+        SubscribeLocalEvent<MedicalSurgeryToolComponent, DroppedEvent>(OnToolDropped);
+    }
+
+    private void OnToolDropped(Entity<MedicalSurgeryToolComponent> ent, ref DroppedEvent args)
+    {
+        ent.Comp.Sterile = false;
+    }
+
+    private void OnToolExamined(Entity<MedicalSurgeryToolComponent> ent, ref ExaminedEvent args)
+    {
+        args.PushMarkup(Loc.GetString(ent.Comp.Sterile ? "medical-tool-sterile" : "medical-tool-contaminated"));
+    }
+
+    private void OnSterilize(Entity<MedicalSterilizerComponent> ent, ref InteractUsingEvent args)
+    {
+        if (args.Handled || !this.IsPowered(ent.Owner, EntityManager)
+            || !_interaction.InRangeUnobstructed(args.User, ent.Owner) || !_hands.IsHolding(args.User, args.Used, out _)
+            || !TryComp<MedicalSurgeryToolComponent>(args.Used, out var tool))
+            return;
+        tool.Sterile = true;
+        args.Handled = true;
+        _popup.PopupEntity(Loc.GetString("medical-tool-sterilized"), ent, args.User);
     }
 
     private void OnToolInteract(Entity<MedicalSurgeryToolComponent> ent, ref AfterInteractEvent args)
@@ -59,11 +87,13 @@ public sealed class MedicalSurgerySystem : EntitySystem
 
         // Extraction of several exposed organs is deliberately explicit in the debug panel.
         EntityUid? selected = null;
-        if (action == MedicalSurgeryAction.Extract)
+        if (action is MedicalSurgeryAction.Extract or MedicalSurgeryAction.RehabilitateNeurology)
         {
             foreach (var organ in _body.EnumerateOrgans<OrganComponent>(patient))
             {
                 if (!TryComp<ChildOrganComponent>(organ.Owner, out var child) || child.Parent != part)
+                    continue;
+                if (action == MedicalSurgeryAction.RehabilitateNeurology && !HasComp<CerebralHealthComponent>(organ.Owner))
                     continue;
                 if (selected != null)
                 {
@@ -113,11 +143,13 @@ public sealed class MedicalSurgerySystem : EntitySystem
         {
             if (TryComp<MedicalSurgeryToolComponent>(tool, out var surgical))
             {
-                if (surgical.Action == MedicalSurgeryAction.Extract)
+                if (surgical.Action is MedicalSurgeryAction.Extract or MedicalSurgeryAction.RehabilitateNeurology)
                 {
                     foreach (var organ in _body.EnumerateOrgans<OrganComponent>(ent.Owner))
                     {
                         if (!TryComp<ChildOrganComponent>(organ.Owner, out var child) || child.Parent != part.Owner)
+                            continue;
+                        if (surgical.Action == MedicalSurgeryAction.RehabilitateNeurology && !HasComp<CerebralHealthComponent>(organ.Owner))
                             continue;
                         AddVerb(ent, user, tool, table, part, surgical.Action, organ.Owner, args.Verbs);
                     }
@@ -181,6 +213,8 @@ public sealed class MedicalSurgerySystem : EntitySystem
 
         switch (ev.Action)
         {
+            case MedicalSurgeryAction.Disinfect:
+                return !wound.Prosthetic;
             case MedicalSurgeryAction.Incise:
                 return wound.SurgicalAccess == 0;
             case MedicalSurgeryAction.Clamp:
@@ -205,6 +239,17 @@ public sealed class MedicalSurgerySystem : EntitySystem
                 return wound.SurgicalAccess == 3 && wound.Bleeding <= 0f && wound.VascularDamage > 0f;
             case MedicalSurgeryAction.RepairProsthetic:
                 return wound.Prosthetic && wound.Injury.GetTotal() > 0;
+            case MedicalSurgeryAction.RehabilitateNeurology:
+                return wound.InternalsExposed && wound.Bleeding <= 0f && site.Category?.Id == "Head"
+                    && ev.Organ is { } brainEntity && !TerminatingOrDeleted(GetEntity(brainEntity))
+                    && TryComp<OrganComponent>(GetEntity(brainEntity), out var brainOrgan) && brainOrgan.Body == patient
+                    && TryComp<ChildOrganComponent>(GetEntity(brainEntity), out var brainChild) && brainChild.Parent == GetEntity(ev.Part)
+                    && TryComp<CerebralHealthComponent>(GetEntity(brainEntity), out var brain)
+                    && brain.Damage < PhysiologyModel.MaximumBrainDamage && brain.OxygenDebt < PhysiologyModel.UnconsciousDebt
+                    && _neurology.HasPersistentCondition(brain)
+                    && _neurology.Dose(patient, "MedicalTestNeurorestorative") >= NeurologicalTrauma.TherapeuticDose
+                    && TryComp<PhysiologyStateComponent>(patient, out var state)
+                    && state.OxygenDelivery / state.MetabolicDemand >= PhysiologyModel.AdequateDelivery;
             case MedicalSurgeryAction.Extract:
                 return wound.InternalsExposed && wound.Bleeding <= 0f && ev.Organ is { } extraction
                     && TryComp<OrganComponent>(GetEntity(extraction), out var organ) && organ.Body == patient
@@ -230,12 +275,14 @@ public sealed class MedicalSurgerySystem : EntitySystem
             return;
         foreach (var action in Enum.GetValues<MedicalSurgeryAction>())
         {
-            if (action == MedicalSurgeryAction.Extract)
+            if (action is MedicalSurgeryAction.Extract or MedicalSurgeryAction.RehabilitateNeurology)
             {
                 if (!wound.InternalsExposed)
                     continue;
                 foreach (var organ in _body.EnumerateOrgans<OrganComponent>(patient))
                 {
+                    if (action == MedicalSurgeryAction.RehabilitateNeurology && !HasComp<CerebralHealthComponent>(organ.Owner))
+                        continue;
                     if (TryComp<ChildOrganComponent>(organ.Owner, out var child) && child.Parent == part)
                         Add(action, organ.Owner);
                 }
@@ -282,6 +329,8 @@ public sealed class MedicalSurgerySystem : EntitySystem
             return Reason("interact");
         if (Validate(patient, user, used, ev))
             return null;
+        if (ev.Action == MedicalSurgeryAction.RehabilitateNeurology)
+            return Loc.GetString("medical-neurology-surgery-requirements");
         var wound = Comp<MedicalWoundComponent>(GetEntity(ev.Part));
         if (ev.Action == MedicalSurgeryAction.RepairProsthetic)
             return Reason("prosthetic");
@@ -340,6 +389,10 @@ public sealed class MedicalSurgerySystem : EntitySystem
         var wound = Comp<MedicalWoundComponent>(part);
         switch (args.Action)
         {
+            case MedicalSurgeryAction.Disinfect:
+                wound.Contamination = 0f;
+                wound.AntisepticSeconds = 120f;
+                break;
             case MedicalSurgeryAction.Incise:
                 _wounds.TryInjure(ent, Comp<OrganComponent>(part).Category!.Value.Id, "Slash", 5f);
                 wound.SurgicalAccess = 1;
@@ -378,6 +431,11 @@ public sealed class MedicalSurgerySystem : EntitySystem
             case MedicalSurgeryAction.RepairProsthetic:
                 _wounds.RepairProsthetic(ent, wound);
                 break;
+            case MedicalSurgeryAction.RehabilitateNeurology:
+                if (!_neurology.Rehabilitate(Comp<CerebralHealthComponent>(GetEntity(args.Organ!.Value))))
+                    return;
+                _neurology.ConsumeTreatment(ent);
+                break;
             case MedicalSurgeryAction.Extract:
                 var removed = GetEntity(args.Organ!.Value);
                 if (!_containers.Remove(removed, _containers.GetContainer(ent, BodyComponent.ContainerID)))
@@ -390,6 +448,14 @@ public sealed class MedicalSurgerySystem : EntitySystem
                     || !_containers.Insert(replacement, _containers.GetContainer(ent, BodyComponent.ContainerID)))
                     return;
                 break;
+        }
+        if (args.Action != MedicalSurgeryAction.Disinfect && !wound.Prosthetic && args.Used is { } instrument)
+        {
+            var sterile = TryComp<MedicalSurgeryToolComponent>(instrument, out var tool) && tool.Sterile;
+            if (!sterile)
+                wound.Contamination = Math.Clamp(wound.Contamination + 15f, 0f, 100f);
+            if (tool != null)
+                tool.Sterile = false;
         }
         wound.SurgeryRevision++;
         args.Handled = true;
