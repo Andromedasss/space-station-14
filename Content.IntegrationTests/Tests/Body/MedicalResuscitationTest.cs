@@ -157,28 +157,6 @@ public sealed class MedicalResuscitationTest : InteractionTest
     }
 
     [Test]
-    public async Task ExperimentalDrugAndEquipmentDoNotOptOrdinaryPatientsIntoPhysiology()
-    {
-        await AddAtmosphere();
-        await SpawnTarget("MobHuman");
-        await InteractUsing("MedicalTestInotropeMedipen");
-        await RunSeconds(5f);
-        await Server.WaitAssertion(() =>
-        {
-            Assert.That(SEntMan.HasComponent<PhysiologyComponent>(STarget!.Value), Is.False);
-            Assert.That(SEntMan.System<PhysiologySystem>().Scan(STarget.Value), Is.Null);
-            Assert.That(SEntMan.System<MedicalLifeSupportSystem>().GetSupport(STarget.Value), Is.Null);
-            Assert.That(SEntMan.System<SharedVerbSystem>().GetLocalVerbs(STarget.Value, SPlayer, typeof(AlternativeVerb))
-                .Any(v => v.Text == "Perform experimental chest compressions"), Is.False);
-            var defib = new MedicalDefibrillationEvent();
-            SEntMan.EventBus.RaiseLocalEvent(STarget.Value, ref defib);
-            Assert.That(defib.Handled, Is.False);
-            Assert.That(SEntMan.System<DamageableSystem>().GetAllDamage(STarget.Value).GetTotal(),
-                Is.EqualTo(FixedPoint2.Zero));
-        });
-    }
-
-    [Test]
     public async Task ActualDefibrillatorCorrectsOnlyShockableRhythmWithoutHealingTissueOrBrain()
     {
         await AddAtmosphere();

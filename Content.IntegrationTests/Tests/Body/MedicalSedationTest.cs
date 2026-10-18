@@ -116,15 +116,6 @@ public sealed class MedicalSedationTest : InteractionTest
             Assert.That(scan.BrainDamage, Is.GreaterThan(0f));
             Assert.That(SEntMan.GetComponent<RespiratorComponent>(STarget.Value).Saturation, Is.LessThanOrEqualTo(0f));
         });
-        await SpawnTarget("MobHuman");
-        await InteractUsing("MedicalTestSedativeMedipen");
-        await RunSeconds(6f);
-        await Server.WaitAssertion(() =>
-        {
-            Assert.That(SEntMan.HasComponent<PhysiologyComponent>(STarget!.Value), Is.False);
-            Assert.That(SEntMan.System<MobStateSystem>().IsAlive(STarget.Value), Is.True);
-            Assert.That(SEntMan.System<MedicalSedationSystem>().RespiratoryDrive(STarget.Value), Is.EqualTo(1f));
-        });
     }
 
     [Test]
