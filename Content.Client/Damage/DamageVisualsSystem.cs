@@ -6,6 +6,7 @@ using Content.Shared.Damage.Prototypes;
 using Content.Shared.Damage.Systems;
 using Content.Shared.DisplacementMap;
 using Content.Shared.FixedPoint;
+using Content.Shared.Medical;
 using Robust.Client.GameObjects;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Utility;
@@ -499,6 +500,11 @@ public sealed partial class DamageVisualsSystem : VisualizerSystem<DamageVisuals
     /// </summary>
     private void UpdateDamageVisuals(Entity<DamageableComponent, SpriteComponent, DamageVisualsComponent> entity)
     {
+        // Physiology-tracked mobs use per-part MedicalWoundComponent
+        // for wound visualization, not the global entity-level overlay.
+        if (HasComp<PhysiologyComponent>(entity.Owner))
+            return;
+
         var spriteComponent = entity.Comp2;
         var damageVisComp = entity.Comp3;
 
@@ -527,6 +533,11 @@ public sealed partial class DamageVisualsSystem : VisualizerSystem<DamageVisuals
     /// </summary>
     private void UpdateDamageVisuals(List<ProtoId<DamageGroupPrototype>> delta, Entity<DamageableComponent, SpriteComponent, DamageVisualsComponent> entity)
     {
+        // Physiology-tracked mobs use per-part MedicalWoundComponent
+        // for wound visualization, not the global entity-level overlay.
+        if (HasComp<PhysiologyComponent>(entity.Owner))
+            return;
+
         var spriteComponent = entity.Comp2;
         var damageVisComp = entity.Comp3;
         var damage = _damageable.GetAllDamage((entity.Owner, entity.Comp1));
