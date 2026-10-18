@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using Content.Shared.Body;
 using Content.Shared.Body.Components;
 using Content.Shared.Body.Events;
@@ -11,7 +11,6 @@ using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Medical;
 using Content.Shared.Movement.Systems;
 using Content.Shared.Rejuvenate;
-using Robust.Shared.GameObjects;
 using Robust.Shared.Prototypes;
 
 namespace Content.Server.Medical;
@@ -22,7 +21,6 @@ namespace Content.Server.Medical;
 /// </summary>
 public sealed class MedicalWoundSystem : EntitySystem
 {
-    [Dependency] private IEntityManager _entities = default!;
     [Dependency] private BodySystem _body = default!;
     [Dependency] private BloodstreamSystem _blood = default!;
     [Dependency] private DamageableSystem _damage = default!;
@@ -49,25 +47,6 @@ public sealed class MedicalWoundSystem : EntitySystem
         SubscribeLocalEvent<PhysiologyStateComponent, RejuvenateEvent>(OnRejuvenate);
         SubscribeLocalEvent<MedicalWoundComponent, RejuvenateEvent>(OnPartRejuvenate);
         SubscribeLocalEvent<PhysiologyComponent, MapInitEvent>(OnMapInit);
-        SubscribeLocalEvent<MedicalWoundComponent, ComponentInit>(OnWoundComponentInit);
-    }
-
-    private void OnWoundComponentInit(EntityUid uid, MedicalWoundComponent wound, ComponentInit args)
-    {
-        if (!_entities.HasComponent<MedicalWoundVisualComponent>(uid))
-            _entities.AddComponent(uid, new MedicalWoundVisualComponent());
-        SyncVisualComponent(uid, wound);
-    }
-
-    private void SyncVisualComponent(EntityUid part, MedicalWoundComponent wound)
-    {
-        if (!_entities.TryGetComponent<MedicalWoundVisualComponent>(part, out var visual) || visual is null)
-            return;
-
-        visual.TotalInjury = wound.Injury.GetTotal().Float();
-        visual.Bleeding = wound.Bleeding;
-        visual.Fractured = wound.Fractured;
-        visual.Necrotic = wound.Necrotic;
     }
 
     private void OnMapInit(Entity<PhysiologyComponent> ent, ref MapInitEvent args)
@@ -144,7 +123,6 @@ public sealed class MedicalWoundSystem : EntitySystem
             {
                 var previousInjury = hit.Comp2.Injury.DamageDict.GetValueOrDefault(type);
                 hit.Comp2.Injury.DamageDict[type] = previousInjury + amount;
-                SyncVisualComponent(hit.Owner, hit.Comp2);
                 if (!hit.Comp2.Prosthetic && type == "Blunt" && (hit.Comp1.Category?.Id is "Head" or "ArmLeft" or "ArmRight" or "HandLeft" or "HandRight"
                         or "LegLeft" or "LegRight" or "FootLeft" or "FootRight")
                     && float.IsFinite(hit.Comp2.FractureThreshold) && hit.Comp2.FractureThreshold > 0f
@@ -210,10 +188,9 @@ public sealed class MedicalWoundSystem : EntitySystem
             {
                 if (args.TargetPart != null && part is { } healed)
                 {
-                var injury = healed.Comp2.Injury.DamageDict.GetValueOrDefault(type);
-                healed.Comp2.Injury.DamageDict[type] = FixedPoint2.Max(FixedPoint2.Zero, injury + amount);
-                SyncVisualComponent(healed.Owner, healed.Comp2);
-                continue;
+                    var injury = healed.Comp2.Injury.DamageDict.GetValueOrDefault(type);
+                    healed.Comp2.Injury.DamageDict[type] = FixedPoint2.Max(FixedPoint2.Zero, injury + amount);
+                    continue;
                 }
                 // Upstream healing has no location. Distribute actual repaired damage, not requested healing.
                 var total = FixedPoint2.Zero;
@@ -232,7 +209,6 @@ public sealed class MedicalWoundSystem : EntitySystem
                         continue;
                     var repaired = FixedPoint2.FromCents((int)((long)remaining.Value * injury.Value / total.Value));
                     organ.Comp2.Injury.DamageDict[type] = injury - repaired;
-                    SyncVisualComponent(organ.Owner, organ.Comp2);
                     remaining -= repaired;
                     total -= injury;
                 }
