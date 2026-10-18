@@ -16,8 +16,9 @@ hostname = "SS14 Local Development"
 role_timers = false
 role_loadout_timers = false
 map = "Box"
+preset = "Extended"
 defaultpreset = "Extended"
-lobbyenabled = true
+lobbyenabled = false
 lobbyduration = 15
 
 [config]
