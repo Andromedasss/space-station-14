@@ -21,7 +21,6 @@ using Content.Shared.Chat;
 using Content.Shared.Damage.ForceSay;
 using Content.Shared.Decals;
 using Content.Shared.Input;
-using Content.Shared.Medical;
 using Content.Shared.Radio;
 using Content.Shared.Roles.RoleCodeword;
 using Robust.Client.GameObjects;
@@ -844,17 +843,9 @@ public sealed partial class ChatUIController : UIController
                 {
                         foreach (string codeword in codewordData.Codewords)
                             msg.WrappedMessage = SharedChatSystem.InjectTagAroundString(msg, codeword, "color", codewordData.Color.ToHex());
-                        }
                     }
                 }
-
-        // Alexia scrambles all readable text for the affected player.
-        if (_ent.TryGetComponent(_player.LocalEntity, out PhysiologyComponent? physiology)
-            && physiology.CognitiveSymptoms.HasFlag(MedicalCognitiveSymptoms.Alexia))
-        {
-            msg.Message = NeurologicalTrauma.AlexicText(msg.Message);
-            msg.WrappedMessage = NeurologicalTrauma.AlexicText(msg.WrappedMessage);
-        }
+            }
 
         // Log all incoming chat to repopulate when filter is un-toggled
         if (!msg.HideChat)
