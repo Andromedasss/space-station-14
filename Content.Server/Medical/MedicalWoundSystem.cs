@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using Content.Shared.Body;
 using Content.Shared.Body.Components;
 using Content.Shared.Body.Events;
@@ -21,6 +21,8 @@ namespace Content.Server.Medical;
 /// </summary>
 public sealed class MedicalWoundSystem : EntitySystem
 {
+    [Dependency] private IEntityManager _entities = default!;
+    [Dependency] private IPrototypeManager _prototypes = default!;
     [Dependency] private BodySystem _body = default!;
     [Dependency] private BloodstreamSystem _blood = default!;
     [Dependency] private DamageableSystem _damage = default!;
@@ -47,6 +49,80 @@ public sealed class MedicalWoundSystem : EntitySystem
         SubscribeLocalEvent<PhysiologyStateComponent, RejuvenateEvent>(OnRejuvenate);
         SubscribeLocalEvent<MedicalWoundComponent, RejuvenateEvent>(OnPartRejuvenate);
         SubscribeLocalEvent<PhysiologyComponent, MapInitEvent>(OnMapInit);
+        SubscribeLocalEvent<MedicalWoundComponent, ComponentInit>(OnWoundComponentInit);
+    }
+
+    /// <summary>
+    /// Mirrors the server-only wound state into a replicated component so the client can
+    /// render the damage overlay for this body part only.
+    /// </summary>
+    private void OnWoundComponentInit(EntityUid uid, MedicalWoundComponent wound, ComponentInit args)
+    {
+        if (!_entities.HasComponent<MedicalWoundVisualComponent>(uid))
+            _entities.AddComponent(uid, new MedicalWoundVisualComponent());
+
+        SyncVisualComponent(uid, wound);
+    }
+
+    private void SyncVisualComponent(EntityUid part, MedicalWoundComponent wound)
+    {
+        if (!_entities.TryGetComponent<MedicalWoundVisualComponent>(part, out var visual) || visual is null)
+            return;
+
+        visual.TotalInjury = wound.Injury.GetTotal().Float();
+        visual.Fractured = wound.Fractured;
+        visual.Necrotic = wound.Necrotic;
+        visual.DominantGroup = DominantDamageGroup(wound);
+    }
+
+    /// <summary>
+    /// Picks the damage group that best represents the wound, matching the groups the
+    /// client damage overlay layers are configured for (Brute, Burn).
+    /// </summary>
+    private string DominantDamageGroup(MedicalWoundComponent wound)
+    {
+        var best = "Brute";
+        var bestAmount = 0f;
+
+        foreach (var (type, amount) in wound.Injury.DamageDict)
+        {
+            if (amount.Float() <= 0f)
+                continue;
+
+            var group = DamageGroupOf(type);
+            if (group == null)
+                continue;
+
+            if (group == "Burn" && best != "Burn")
+            {
+                // Burns are more visually distinct than brute trauma.
+                if (amount.Float() >= bestAmount)
+                {
+                    best = group;
+                    bestAmount = amount.Float();
+                }
+                continue;
+            }
+
+            if (group == "Brute" && amount.Float() > bestAmount)
+            {
+                best = group;
+                bestAmount = amount.Float();
+            }
+        }
+
+        return best;
+    }
+
+    private string? DamageGroupOf(ProtoId<DamageTypePrototype> type)
+    {
+        foreach (var group in _prototypes.EnumeratePrototypes<DamageGroupPrototype>())
+        {
+            if (group.DamageTypes.Contains(type))
+                return group.ID;
+        }
+
+        return null;
     }
 
     private void OnMapInit(Entity<PhysiologyComponent> ent, ref MapInitEvent args)
@@ -123,6 +199,7 @@ public sealed class MedicalWoundSystem : EntitySystem
             {
                 var previousInjury = hit.Comp2.Injury.DamageDict.GetValueOrDefault(type);
                 hit.Comp2.Injury.DamageDict[type] = previousInjury + amount;
+                SyncVisualComponent(hit.Owner, hit.Comp2);
                 if (!hit.Comp2.Prosthetic && type == "Blunt" && (hit.Comp1.Category?.Id is "Head" or "ArmLeft" or "ArmRight" or "HandLeft" or "HandRight"
                         or "LegLeft" or "LegRight" or "FootLeft" or "FootRight")
                     && float.IsFinite(hit.Comp2.FractureThreshold) && hit.Comp2.FractureThreshold > 0f
@@ -190,6 +267,7 @@ public sealed class MedicalWoundSystem : EntitySystem
                 {
                     var injury = healed.Comp2.Injury.DamageDict.GetValueOrDefault(type);
                     healed.Comp2.Injury.DamageDict[type] = FixedPoint2.Max(FixedPoint2.Zero, injury + amount);
+                    SyncVisualComponent(healed.Owner, healed.Comp2);
                     continue;
                 }
                 // Upstream healing has no location. Distribute actual repaired damage, not requested healing.
@@ -209,6 +287,7 @@ public sealed class MedicalWoundSystem : EntitySystem
                         continue;
                     var repaired = FixedPoint2.FromCents((int)((long)remaining.Value * injury.Value / total.Value));
                     organ.Comp2.Injury.DamageDict[type] = injury - repaired;
+                    SyncVisualComponent(organ.Owner, organ.Comp2);
                     remaining -= repaired;
                     total -= injury;
                 }
