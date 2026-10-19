@@ -58,18 +58,31 @@ public sealed class MedicalWoundSystem : EntitySystem
     /// </summary>
     private void OnWoundComponentInit(EntityUid uid, MedicalWoundComponent wound, ComponentInit args)
     {
-        if (!_entities.HasComponent<MedicalWoundVisualComponent>(uid))
-            _entities.AddComponent(uid, new MedicalWoundVisualComponent());
-
         SyncVisualComponent(uid, wound);
     }
 
     private void SyncVisualComponent(EntityUid part, MedicalWoundComponent wound)
     {
-        if (!_entities.TryGetComponent<MedicalWoundVisualComponent>(part, out var visual) || visual is null)
-            return;
+        var total = wound.Injury.GetTotal().Float();
 
-        visual.TotalInjury = wound.Injury.GetTotal().Float();
+        if (!_entities.TryGetComponent<MedicalWoundVisualComponent>(part, out var visual) || visual is null)
+        {
+            // Only wounded parts carry the replicated visual state. Healthy parts stay
+            // free of it, which keeps the networked state small for whole stations.
+            if (total <= 0f)
+                return;
+
+            _entities.AddComponent(part, new MedicalWoundVisualComponent
+            {
+                TotalInjury = total,
+                Fractured = wound.Fractured,
+                Necrotic = wound.Necrotic,
+                DominantGroup = DominantDamageGroup(wound),
+            });
+            return;
+        }
+
+        visual.TotalInjury = total;
         visual.Fractured = wound.Fractured;
         visual.Necrotic = wound.Necrotic;
         visual.DominantGroup = DominantDamageGroup(wound);
