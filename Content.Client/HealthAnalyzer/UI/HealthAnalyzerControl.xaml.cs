@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using System.Numerics;
 using Robust.Client.Player;
 using Content.Shared.Atmos;
@@ -50,14 +50,7 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
     }
 
     private readonly IPlayerManager _player;
-    private bool _alexia;
 
-    private string Readable(string text)
-    {
-        if (_alexia)
-            return NeurologicalTrauma.AlexicText(text);
-        return text;
-    }
 
     public void Populate(HealthAnalyzerUiState state)
     {
@@ -80,17 +73,14 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
         NoPatientDataText.Visible = false;
         PatientDataContainer.Visible = true;
 
-        _alexia = _player.LocalSession != null
-            && _entityManager.TryGetComponent(_player.LocalSession.AttachedEntity, out PhysiologyComponent? localPhysiology)
-            && localPhysiology.CognitiveSymptoms.HasFlag(MedicalCognitiveSymptoms.Alexia);
 
         // Scan Mode
 
-        ScanModeLabel.Text = Readable(state.ScanMode.HasValue
+        ScanModeLabel.Text = state.ScanMode.HasValue
             ? state.ScanMode.Value
                 ? Loc.GetString("health-analyzer-window-scan-mode-active")
                 : Loc.GetString("health-analyzer-window-scan-mode-inactive")
-            : Loc.GetString("health-analyzer-window-entity-unknown-text"));
+            : Loc.GetString("health-analyzer-window-entity-unknown-text");
 
         ScanModeLabel.FontColorOverride = state.ScanMode.HasValue && state.ScanMode.Value ? Color.Green : Color.Red;
 
@@ -102,31 +92,31 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
 
         var name = new FormattedMessage();
         name.PushColor(Color.White);
-        name.AddText(Readable(_entityManager.HasComponent<MetaDataComponent>(target.Value)
+        name.AddText(_entityManager.HasComponent<MetaDataComponent>(target.Value)
             ? Identity.Name(target.Value, _entityManager)
-            : Loc.GetString("health-analyzer-window-entity-unknown-text")));
+            : Loc.GetString("health-analyzer-window-entity-unknown-text"));
         NameLabel.SetMessage(name);
 
-        SpeciesLabel.Text = Readable(
+        SpeciesLabel.Text = 
             _entityManager.TryGetComponent<HumanoidProfileComponent>(target.Value,
                 out var humanoidComponent)
                 ? Loc.GetString(_prototypes.Index(humanoidComponent.Species).Name)
-                : Loc.GetString("health-analyzer-window-entity-unknown-species-text"));
+                : Loc.GetString("health-analyzer-window-entity-unknown-species-text");
 
         // Basic Diagnostic
 
-        TemperatureLabel.Text = Readable(!float.IsNaN(state.Temperature)
+        TemperatureLabel.Text = !float.IsNaN(state.Temperature)
             ? $"{state.Temperature - Atmospherics.T0C:F1} °C ({state.Temperature:F1} K)"
-            : Loc.GetString("health-analyzer-window-entity-unknown-value-text"));
+            : Loc.GetString("health-analyzer-window-entity-unknown-value-text");
 
-        BloodLabel.Text = Readable(!float.IsNaN(state.BloodLevel)
+        BloodLabel.Text = !float.IsNaN(state.BloodLevel)
             ? $"{state.BloodLevel * 100:F1} %"
-            : Loc.GetString("health-analyzer-window-entity-unknown-value-text"));
+            : Loc.GetString("health-analyzer-window-entity-unknown-value-text");
 
-        StatusLabel.Text = Readable(
+        StatusLabel.Text = 
             _entityManager.TryGetComponent<MobStateComponent>(target.Value, out var mobStateComponent)
                 ? GetStatus(mobStateComponent.CurrentState)
-                : Loc.GetString("health-analyzer-window-entity-unknown-text"));
+                : Loc.GetString("health-analyzer-window-entity-unknown-text");
 
         if (state.Physiology is { } physiology)
         {
@@ -286,7 +276,7 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
         if (state.Unrevivable == true)
             AlertsContainer.AddChild(new RichTextLabel
             {
-                Text = Readable(Loc.GetString("health-analyzer-window-entity-unrevivable-text")),
+                Text = Loc.GetString("health-analyzer-window-entity-unrevivable-text"),
                 Margin = new Thickness(0, 4),
                 MaxWidth = 300
             });
@@ -294,7 +284,7 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
         if (state.Bleeding == true)
             AlertsContainer.AddChild(new RichTextLabel
             {
-                Text = Readable(Loc.GetString("health-analyzer-window-entity-bleeding-text")),
+                Text = Loc.GetString("health-analyzer-window-entity-bleeding-text"),
                 Margin = new Thickness(0, 4),
                 MaxWidth = 300
             });
@@ -386,7 +376,7 @@ public sealed partial class HealthAnalyzerControl : BoxContainer
     {
         return new Label
         {
-            Text = Readable(text),
+            Text = text,
         };
     }
 

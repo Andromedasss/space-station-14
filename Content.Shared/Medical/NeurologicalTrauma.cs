@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Robust.Shared.Serialization;
+using Robust.Shared.Utility;
 
 namespace Content.Shared.Medical;
 
@@ -107,5 +108,31 @@ public static class NeurologicalTrauma
             Array.Reverse(letters);
             return new string(letters);
         });
+    }
+
+    /// <summary>
+    /// Rebuilds a formatted message with its letters scrambled while keeping the markup tags.
+    /// </summary>
+    public static FormattedMessage AlexicMessage(FormattedMessage message)
+    {
+        var result = new FormattedMessage();
+
+        foreach (var node in message)
+        {
+            if (node.IsPlainText)
+            {
+                result.AddText(AlexicText(node.Value.StringValue ?? ""));
+            }
+            else if (node.Closing)
+            {
+                result.Pop();
+            }
+            else
+            {
+                result.PushTag(node);
+            }
+        }
+
+        return result;
     }
 }

@@ -37,9 +37,10 @@ public sealed class MedicalWoundTest : GameTest
 
         foreach (var part in parts)
         {
-            Assert.That(SEntMan.HasComponent<MedicalWoundVisualComponent>(part.Owner), Is.True,
-                $"Part {part.Comp1.Category?.Id} must have replicated wound visual data.");
-            Assert.That(SEntMan.GetComponent<MedicalWoundVisualComponent>(part.Owner).TotalInjury, Is.Zero);
+            // The replicated visual component is only created for parts that get wounded,
+            // healthy parts must not carry the extra networked state.
+            Assert.That(SEntMan.HasComponent<MedicalWoundVisualComponent>(part.Owner), Is.False,
+                $"Healthy part {part.Comp1.Category?.Id} must not have replicated wound visual data.");
         }
 
         var arm = parts.Single(p => p.Comp1.Category?.Id == "ArmLeft");
@@ -47,12 +48,14 @@ public sealed class MedicalWoundTest : GameTest
 
         Assert.That(SEntMan.System<MedicalWoundSystem>().TryInjure(patient, "ArmLeft", "Slash", 60f), Is.True);
 
+        Assert.That(SEntMan.HasComponent<MedicalWoundVisualComponent>(arm.Owner), Is.True,
+            "The wounded part must have replicated wound visual data.");
         var armVisual = SEntMan.GetComponent<MedicalWoundVisualComponent>(arm.Owner);
         Assert.That(armVisual.TotalInjury, Is.GreaterThan(0f));
         Assert.That(armVisual.DominantGroup, Is.EqualTo("Brute"));
 
-        var legVisual = SEntMan.GetComponent<MedicalWoundVisualComponent>(leg.Owner);
-        Assert.That(legVisual.TotalInjury, Is.Zero, "Unwounded parts must not report injury.");
+        Assert.That(SEntMan.HasComponent<MedicalWoundVisualComponent>(leg.Owner), Is.False,
+            "Unwounded parts must not report injury.");
     }
 
     [Test]

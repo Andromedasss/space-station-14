@@ -271,10 +271,7 @@ namespace Content.Client.Paper.UI
             EditButtons.Visible = isEditing;
 
             var msg = new FormattedMessage();
-            if (_alexia)
-                msg.AddMarkupPermissive(NeurologicalTrauma.AlexicText(state.Text));
-            else
-                msg.AddMarkupPermissive(state.Text);
+            msg.AddMarkupPermissive(state.Text);
 
             // For premade documents, we want to be able to edit them rather than
             // replace them.

@@ -1,5 +1,6 @@
 using Content.Shared.Medical;
 using NUnit.Framework;
+using Robust.Shared.Utility;
 
 namespace Content.Tests.Shared.Medical;
 
@@ -48,5 +49,16 @@ public sealed class NeurologicalTraumaTest
     public void AlexicTextKeepsLettersButScramblesThem(string input, string expected)
     {
         Assert.That(NeurologicalTrauma.AlexicText(input), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void AlexicMessageScramblesTextAndKeepsMarkup()
+    {
+        var message = new FormattedMessage();
+        message.AddMarkupPermissive("<color=red>Name</color>: message");
+
+        var result = NeurologicalTrauma.AlexicMessage(message);
+
+        Assert.That(result.ToString(), Is.EqualTo("<color=red>emaN</color>: egassem"));
     }
 }
