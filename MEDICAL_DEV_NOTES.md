@@ -106,6 +106,7 @@ dotnet run --no-build --project Content.Client\Content.Client.csproj -- --connec
 14. **Память интеграционных тестов.** `testhost.exe` накапливает серверы: ~60 МБ на тест, пик 6 ГБ на 176 медицинских тестов. `EntityTest` (`SpawnAndDeleteAllEntities*`) — самый тяжёлый, он спавнит **все** прототипы на отдельных картах (пик 10+ ГБ). Это свойство тестовой обвязки, не утечка в коде. Перед прогоном убивать `testhost`/`dotnet`, иначе DLL залочены.
 15. **Клиентский UI: подписка на событие ДО первого вызова.** В `OpenForTarget` порядок должен быть `OnRequest += handler` → `SetTarget()` → `OpenCentered()`. Иначе `SetTarget` вызовет запрос, а подписчика ещё нет — запрос уйдёт в никуда, окно откроется пустым, и симптом будет выглядеть как «сеть не работает».
 16. **Дебаг-окно не должно иметь побочных эффектов.** Рефреш отправлял `Intervene "heart" 1` — то есть открытие окна меняло функцию сердца пациента. Для рефреша нужен отдельный action без изменений.
+17. **Вертикальный `BoxContainer` отдаёт детям только минимальную высоту.** Контент вкладок схлопывался в 0: корневой BoxContainer давал `TabContainer` высоту одной лишь полоски вкладок. Нужны `VerticalExpand = true` / `HorizontalExpand = true` на TabContainer и на ScrollContainer внутри вкладок. Рабочий образец — `MedicalPanelWindow`: `ContentsContainer.AddChild(new ScrollContainer { Children = { _content } })`.
 
 ## 6. Что сделано и что нет
 
