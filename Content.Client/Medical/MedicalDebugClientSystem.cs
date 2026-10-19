@@ -88,8 +88,9 @@ public sealed class MedicalDebugClientSystem : EntitySystem
     {
         CloseWindow();
         _window = new MedicalDebugWindow();
-        _window.SetTarget(target);
+        // Subscribe before targeting: SetTarget triggers the initial refresh request.
         _window.OnRequest += OnRequest;
+        _window.SetTarget(target);
         _window.OpenCentered();
     }
 
@@ -105,11 +106,13 @@ public sealed class MedicalDebugClientSystem : EntitySystem
 
     private void OnRequest(MedicalDebugRequestMessage msg)
     {
+        Log.Debug($"medical debug request {msg.ActionType} target={msg.TargetEntity}");
         RaiseNetworkEvent(msg);
     }
 
     private void OnState(MedicalDebugStateMessage msg)
     {
+        Log.Debug($"medical debug state target={msg.TargetEntity} valid={msg.Valid} scan={msg.Scan != null} error={msg.Error}");
         _window?.Populate(msg);
     }
 

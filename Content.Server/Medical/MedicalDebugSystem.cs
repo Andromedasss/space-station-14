@@ -32,6 +32,8 @@ public sealed class MedicalDebugSystem : EntitySystem
 
     private void OnRequest(MedicalDebugRequestMessage msg, EntitySessionEventArgs session)
     {
+        Log.Debug($"medical debug request {msg.ActionType} target={msg.TargetEntity} p1='{msg.StringParam1}' p2='{msg.StringParam2}' v={msg.FloatParam1}");
+
         if (!_admins.IsAdmin(session.SenderSession))
         {
             SendState(msg.TargetEntity, session, "Admin rights required.");
@@ -61,6 +63,9 @@ public sealed class MedicalDebugSystem : EntitySystem
     {
         switch (msg.ActionType)
         {
+            case MedicalDebugRequestMessage.Action.Refresh:
+                return null;
+
             case MedicalDebugRequestMessage.Action.Intervene:
                 if (!_physiology.TryIntervene(target, msg.StringParam1, msg.FloatParam1))
                     return $"Unsupported intervention '{msg.StringParam1}' for this patient.";
@@ -128,7 +133,8 @@ public sealed class MedicalDebugSystem : EntitySystem
             Error = error,
         };
 
-        if (error == null && _entities.TryGetEntity(target, out var entityNet) && entityNet is { } entity)
+        // The scan is always sent, even when the action failed, so the window can show it.
+        if (_entities.TryGetEntity(target, out var entityNet) && entityNet is { } entity)
         {
             var health = _health.GetHealthAnalyzerUiState(entity, detailed: true);
             state.Valid = health.Physiology != null;

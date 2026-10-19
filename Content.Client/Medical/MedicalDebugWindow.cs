@@ -99,7 +99,7 @@ public sealed class MedicalDebugWindow : FancyWindow
         ContentsContainer.AddChild(root);
 
         targetButton.OnPressed += _ => ApplyTargetFromInput();
-        refreshButton.OnPressed += _ => Send(MedicalDebugRequestMessage.Action.Intervene, "heart", 1f);
+        refreshButton.OnPressed += _ => RequestRefresh();
         resetNeuroButton.OnPressed += _ => Send(MedicalDebugRequestMessage.Action.ResetNeurology, string.Empty, 0f);
         resetAllButton.OnPressed += _ => Send(MedicalDebugRequestMessage.Action.ResetAll, string.Empty, 0f);
 
@@ -264,8 +264,8 @@ public sealed class MedicalDebugWindow : FancyWindow
 
     private void RequestRefresh()
     {
-        // Any intervention refreshes the state, so use a no-op read of the heart function.
-        Send(MedicalDebugRequestMessage.Action.Intervene, "heart", 1f);
+        // A pure refresh must not touch the patient, so it uses its own action.
+        Send(MedicalDebugRequestMessage.Action.Refresh, string.Empty, 0f);
     }
 
     private void Send(MedicalDebugRequestMessage.Action action, string param1, float value, string param2 = "")
@@ -295,19 +295,19 @@ public sealed class MedicalDebugWindow : FancyWindow
 
     public void Populate(MedicalDebugStateMessage msg)
     {
-        if (msg.Error != null)
-        {
-            _status.Text = msg.Error;
-            return;
-        }
-
-        _status.Text = "";
+        // The error is shown, but the data is still filled in.
+        _status.Text = msg.Error != null ? "Error: " + msg.Error : "";
         _targetName.Text = msg.Valid ? $"Target: {msg.TargetName} ({msg.TargetEntity})" : "Target has no physiology";
 
         var scan = msg.Scan;
         if (scan == null)
         {
             Fill(_overview, new[] { "No physiology data" });
+            Fill(_organTrauma, Array.Empty<string>());
+            Fill(_organList, Array.Empty<string>());
+            Fill(_injuryList, Array.Empty<string>());
+            Fill(_surgeryList, Array.Empty<string>());
+            Fill(_neuroList, Array.Empty<string>());
             return;
         }
 

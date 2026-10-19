@@ -12,6 +12,8 @@ public sealed class MedicalDebugRequestMessage : EntityEventArgs
 {
     public enum Action : byte
     {
+        /// <summary>Only re-send the current state, no side effects.</summary>
+        Refresh,
         /// <summary>Apply a physiology intervention, see <c>PhysiologySystem.TryIntervene</c>.</summary>
         Intervene,
         /// <summary>Apply a localized wound, see <c>MedicalWoundSystem.TryInjure</c>.</summary>
