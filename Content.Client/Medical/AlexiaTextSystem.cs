@@ -27,27 +27,46 @@ public sealed class AlexiaTextSystem : EntitySystem
     private static readonly Type[] ExcludedWindowTypes = { typeof(MedicalDebugWindow) };
 
     /// <summary>
-    /// Namespaces of player tools that stay legible, such as the admin panel, the build
-    /// menu and the options menu. These are interfaces for the player, not things the
-    /// character reads in the fiction.
+    /// Namespaces of player tools that stay legible. These are interfaces for the
+    /// player, not things the character reads in the fiction, so alexia must not
+    /// make them unusable.
     /// </summary>
     private static readonly string[] ExcludedNamespaces =
     {
+        // Admin and debug tools.
         "Content.Client.Administration",
-        "Content.Client.Options",
         "Content.Client.DebugMon",
-        "Content.Client.Construction",
-        "Content.Client.Sandbox",
-        "Content.Client.Info",
-        "Content.Client.CharacterInfo",
-        "Content.Client.LateJoin",
         "Content.Client.Eui",
-        "Content.Client.Voting",
-        "Content.Client.RoundEnd",
-        "Content.Client.Guidebook",
+        "Content.Client.Bql",
+        "Content.Client.NPC",
         "Content.Client.Commands",
         "Content.Client.Tools",
+
+        // Player menus and settings.
+        "Content.Client.Options",
+        "Content.Client.Construction",
+        "Content.Client.Sandbox",
+        "Content.Client.Lobby",
+        "Content.Client.RoundEnd",
+        "Content.Client.Voting",
+        "Content.Client.Guidebook",
+        "Content.Client.LateJoin",
+        "Content.Client.Info",
+        "Content.Client.CharacterInfo",
+        "Content.Client.Credits",
+        "Content.Client.Changelog",
+        "Content.Client.Afk",
+        "Content.Client.FeedbackPopup",
+
+        // Menus the player drives directly.
         "Content.Client.ContextMenu",
+        "Content.Client.UserInterface.Controls",
+        "Content.Client.UserInterface.Systems.Actions",
+        "Content.Client.UserInterface.Systems.Ghost",
+        "Content.Client.UserInterface.Systems.Sandbox",
+        "Content.Client.UserInterface.Systems.Character",
+        "Content.Client.UserInterface.Systems.Chat",
+        "Content.Client.UserInterface.Systems.Storage",
     };
 
     private readonly Dictionary<Control, Tracked> _tracked = new();
@@ -81,12 +100,28 @@ public sealed class AlexiaTextSystem : EntitySystem
             UpdateText(control, alexia);
         }
 
-        // Forget controls that belonged to windows that were closed.
+        // Forget controls that belonged to windows that were closed. The original text is
+        // restored first, otherwise a reused window would start from scrambled text and
+        // the next open would scramble it a second time, which cancels out.
         foreach (var key in _tracked.Keys.ToList())
         {
-            if (!seen.Contains(key))
-                _tracked.Remove(key);
+            if (seen.Contains(key))
+                continue;
+
+            Restore(key, _tracked[key]);
+            _tracked.Remove(key);
         }
+    }
+
+    private static void Restore(Control control, Tracked entry)
+    {
+        if (control.Disposed)
+            return;
+
+        if (entry.Original != null && control is RichTextLabel rich)
+            rich.SetMessage(entry.Original);
+        else if (entry.OriginalText != null && control is Label plain)
+            plain.Text = entry.OriginalText;
     }
 
     private void UpdateText(Control control, bool alexia)
