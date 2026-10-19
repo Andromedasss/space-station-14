@@ -19,6 +19,10 @@
     - "enum.HumanoidVisualLayers.LLeg"
     - "enum.HumanoidVisualLayers.RArm"
     - "enum.HumanoidVisualLayers.RLeg"
+    - "enum.HumanoidVisualLayers.LHand"
+    - "enum.HumanoidVisualLayers.RHand"
+    - "enum.HumanoidVisualLayers.LFoot"
+    - "enum.HumanoidVisualLayers.RFoot"
     damageOverlayGroups:
       Brute:
         sprite: Mobs/Effects/brute_damage.rsi
