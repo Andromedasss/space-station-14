@@ -72,6 +72,9 @@
         - id: NeuralRehabilitationProbe
         - id: SurgicalAntiseptic
         - id: MedicalTestOrganRepairKit
+        - id: MedicalTestBloodSample
+          amount: 3
+        - id: MedicalTestLaboratory
         - id: ClothingMaskSterile
 
 - type: entity

@@ -42,4 +42,10 @@ public sealed partial class PhysiologyComponent : Component
     [DataField, AutoNetworkedField] public MedicalCognitiveSymptoms CognitiveSymptoms;
     [DataField, AutoNetworkedField] public MedicalPhobia Phobia;
     [DataField, AutoNetworkedField] public int Fear;
+
+    /// <summary>
+    /// Blood group of the patient. Decided once and only revealed by a blood test.
+    /// </summary>
+    [DataField, AutoNetworkedField]
+    public BloodGroup BloodGroup = BloodGroup.ONegative;
 }
