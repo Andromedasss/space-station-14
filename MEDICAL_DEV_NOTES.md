@@ -1,4 +1,4 @@
-# Заметки по экспериментальной медицине SS14 (ветка `feature/medical-physiology`)
+﻿# Заметки по экспериментальной медицине SS14 (ветка `feature/medical-physiology`)
 
 Справочник для продолжения работы. Не заменяет код, но фиксирует всё, что неочевидно.
 
@@ -107,6 +107,7 @@ dotnet run --no-build --project Content.Client\Content.Client.csproj -- --connec
 15. **Клиентский UI: подписка на событие ДО первого вызова.** В `OpenForTarget` порядок должен быть `OnRequest += handler` → `SetTarget()` → `OpenCentered()`. Иначе `SetTarget` вызовет запрос, а подписчика ещё нет — запрос уйдёт в никуда, окно откроется пустым, и симптом будет выглядеть как «сеть не работает».
 16. **Дебаг-окно не должно иметь побочных эффектов.** Рефреш отправлял `Intervene "heart" 1` — то есть открытие окна меняло функцию сердца пациента. Для рефреша нужен отдельный action без изменений.
 17. **Вертикальный `BoxContainer` отдаёт детям только минимальную высоту.** Контент вкладок схлопывался в 0: корневой BoxContainer давал `TabContainer` высоту одной лишь полоски вкладок. Нужны `VerticalExpand = true` / `HorizontalExpand = true` на TabContainer и на ScrollContainer внутри вкладок. Рабочий образец — `MedicalPanelWindow`: `ContentsContainer.AddChild(new ScrollContainer { Children = { _content } })`.
+18. **Разделение «читает персонаж» и «инструмент игрока».** Алексия не должна мешать админу пользоваться админ-панелью. В `AlexiaTextSystem` исключены по неймспейсу: `Content.Client.Administration`, `Options`, `DebugMon`, `Construction`, `Sandbox`, `Info`, `CharacterInfo`, `LateJoin`, `Eui`, `Voting`, `RoundEnd`, `Guidebook`, `Commands`, `Tools`, `ContextMenu`, плюс по типу `ChatBox` и `MedicalDebugWindow`. Всё остальное (консоли, автоматы, документы, книги, вывески) — перемешивается. HUD лежит в `StateRoot`, а не в `WindowRoot`, поэтому обход его не трогает.
 
 ## 6. Что сделано и что нет
 
