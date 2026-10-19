@@ -47,6 +47,9 @@
     - id: ClothingBeltMedicalFilled
     - id: JetInjector
     - id: HandheldHealthAnalyzer
+    - id: MedicalTestAmbuBag
+    - id: MedicalTestOrganCase
+    - id: MedicalTestOrganRepairKit
     - id: ChemistryBottleLaughter # Widely recognized as the best medicine :o)
       prob: 0.01
     - id: PlushieLizardJobMedicaldoctor
@@ -122,6 +125,9 @@
     - id: ClothingBeltMedicalEMTFilled
     - id: JetInjector
     - id: HandheldHealthAnalyzer
+    - id: MedicalTestAmbuBag
+    - id: MedicalTestOrganCase
+    - id: MedicalTestOrganRepairKit
     - id: BoxBodyBag
     - !type:GroupSelector
       children:
