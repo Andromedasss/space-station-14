@@ -1,6 +1,5 @@
 using Content.Client.Damage;
 using Content.Shared.Body;
-using Content.Shared.Damage.Prototypes;
 using Content.Shared.FixedPoint;
 using Content.Shared.Humanoid;
 using Content.Shared.Medical;
@@ -23,7 +22,8 @@ public sealed class MedicalWoundVisualsSystem : EntitySystem
     [Dependency] private SpriteSystem _spriteSystem = default!;
 
     /// <summary>
-    /// Maps an organ category onto the body sprite layer that draws it.
+    /// Fallback mapping from organ category to body sprite layer, used when the
+    /// organ does not carry visual layer information.
     /// </summary>
     private static readonly Dictionary<string, HumanoidVisualLayers> CategoryLayers = new()
     {
@@ -50,10 +50,8 @@ public sealed class MedicalWoundVisualsSystem : EntitySystem
         if (organ.Body is not { } body)
             return;
 
-        if (organ.Category is not { } category)
-            return;
-
-        if (!CategoryLayers.TryGetValue(category.Id, out var layer))
+        var layer = ResolveLayer(organ);
+        if (layer == null)
             return;
 
         if (!_entities.TryGetComponent(body, out SpriteComponent? sprite))
@@ -71,14 +69,14 @@ public sealed class MedicalWoundVisualsSystem : EntitySystem
 
         // The stock visualizer registers one overlay layer per target layer and group,
         // keyed "<Layer><Group>" e.g. "LArmBrute", with states "<Layer>_<Group>_<threshold>".
-        var layerName = layer.ToString();
+        var layerName = layer.Value.ToString();
         var overlayKey = $"{layerName}{group}";
 
         if (!_spriteSystem.LayerMapTryGet((body, sprite), overlayKey, out var spriteLayer, false))
             return;
 
         var threshold = PickThreshold(damageVis.Thresholds, visual.TotalInjury);
-        if (threshold <= FixedPoint2.Zero)
+        if (threshold <= 0f)
         {
             _spriteSystem.LayerSetVisible((body, sprite), spriteLayer, false);
             return;
@@ -89,19 +87,38 @@ public sealed class MedicalWoundVisualsSystem : EntitySystem
     }
 
     /// <summary>
+    /// Finds the body sprite layer this organ is drawn on. The visual organ component
+    /// carries the exact layer, the category mapping is only a fallback.
+    /// </summary>
+    private HumanoidVisualLayers? ResolveLayer(OrganComponent organ)
+    {
+        if (_entities.TryGetComponent<VisualOrganComponent>(organ.Owner, out var visualOrgan)
+            && visualOrgan.Layer is HumanoidVisualLayers visualLayer)
+        {
+            return visualLayer;
+        }
+
+        if (organ.Category is { } category && CategoryLayers.TryGetValue(category.Id, out var mapped))
+            return mapped;
+
+        return null;
+    }
+
+    /// <summary>
     /// Picks the highest configured damage threshold that the injury reaches,
     /// mirroring the stock threshold boundary logic.
     /// </summary>
-    private static FixedPoint2 PickThreshold(List<FixedPoint2> thresholds, float damage)
+    private static int PickThreshold(List<FixedPoint2> thresholds, float damage)
     {
         if (damage <= 0f)
-            return FixedPoint2.Zero;
+            return 0;
 
-        var result = FixedPoint2.Zero;
+        var result = 0;
         foreach (var threshold in thresholds)
         {
-            if (threshold > 0f && damage >= threshold.Float())
-                result = threshold;
+            var value = threshold.Int();
+            if (value > 0 && damage >= value)
+                result = value;
         }
 
         return result;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using Content.IntegrationTests.Fixtures;
 using Content.IntegrationTests.Fixtures.Attributes;
@@ -27,6 +27,34 @@ namespace Content.IntegrationTests.Tests.Body;
 [TestOf(typeof(MedicalWoundSystem))]
 public sealed class MedicalWoundTest : GameTest
 {
+    [Test]
+    [RunOnSide(Side.Server)]
+    public void WoundVisualDataIsReplicatedPerBodyPart()
+    {
+        var patient = SSpawn("MobMedicalTestHuman");
+        var body = SEntMan.System<BodySystem>();
+        var parts = body.EnumerateOrgans<MedicalWoundComponent>(patient).ToArray();
+
+        foreach (var part in parts)
+        {
+            Assert.That(SEntMan.HasComponent<MedicalWoundVisualComponent>(part.Owner), Is.True,
+                $"Part {part.Comp1.Category?.Id} must have replicated wound visual data.");
+            Assert.That(SEntMan.GetComponent<MedicalWoundVisualComponent>(part.Owner).TotalInjury, Is.Zero);
+        }
+
+        var arm = parts.Single(p => p.Comp1.Category?.Id == "ArmLeft");
+        var leg = parts.Single(p => p.Comp1.Category?.Id == "LegRight");
+
+        Assert.That(SEntMan.System<MedicalWoundSystem>().TryInjure(patient, "ArmLeft", "Slash", 60f), Is.True);
+
+        var armVisual = SEntMan.GetComponent<MedicalWoundVisualComponent>(arm.Owner);
+        Assert.That(armVisual.TotalInjury, Is.GreaterThan(0f));
+        Assert.That(armVisual.DominantGroup, Is.EqualTo("Brute"));
+
+        var legVisual = SEntMan.GetComponent<MedicalWoundVisualComponent>(leg.Owner);
+        Assert.That(legVisual.TotalInjury, Is.Zero, "Unwounded parts must not report injury.");
+    }
+
     [Test]
     [RunOnSide(Side.Server)]
     public void AbdominalOrgansArePhysicalPairedAndSeparateFromChestTrauma()

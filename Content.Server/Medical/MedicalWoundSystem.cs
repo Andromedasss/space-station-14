@@ -73,6 +73,9 @@ public sealed class MedicalWoundSystem : EntitySystem
         visual.Fractured = wound.Fractured;
         visual.Necrotic = wound.Necrotic;
         visual.DominantGroup = DominantDamageGroup(wound);
+
+        // Networked component fields are only sent to the client once marked dirty.
+        Dirty(part, visual);
     }
 
     /// <summary>
