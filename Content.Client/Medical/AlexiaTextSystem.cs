@@ -4,6 +4,7 @@ using Content.Shared.Medical;
 using Robust.Client.Player;
 using Robust.Client.UserInterface;
 using Robust.Client.UserInterface.Controls;
+using Robust.Client.UserInterface.CustomControls;
 using Robust.Shared.Utility;
 
 namespace Content.Client.Medical;
@@ -21,10 +22,9 @@ public sealed class AlexiaTextSystem : EntitySystem
     [Dependency] private IPlayerManager _players = default!;
 
     /// <summary>
-    /// Controls that must stay readable: the chat is heard, not read, and the medical
-    /// debug window is a tool for the admin rather than something the character reads.
+    /// Windows of player tools that must stay readable, such as the medical debug window.
     /// </summary>
-    private static readonly Type[] ExcludedTypes = { typeof(ChatBox), typeof(MedicalDebugWindow) };
+    private static readonly Type[] ExcludedWindowTypes = { typeof(MedicalDebugWindow) };
 
     /// <summary>
     /// Namespaces of player tools that stay legible, such as the admin panel, the build
@@ -175,10 +175,16 @@ public sealed class AlexiaTextSystem : EntitySystem
 
     private static IEnumerable<Control> CollectTextControls(Control control)
     {
-        if (control is RichTextLabel or Label)
+        if (control is BaseWindow or Popup)
+        {
+            // Player tools are not read by the character, skip the whole window.
+            if (IsExcludedWindow(control))
+                yield break;
+        }
+        else if (control is RichTextLabel or Label)
         {
             // Chat is heard, not read, so it stays legible.
-            if (!IsExcluded(control))
+            if (control is not ChatBox)
                 yield return control;
         }
 
@@ -190,16 +196,16 @@ public sealed class AlexiaTextSystem : EntitySystem
     }
 
     /// <summary>
-    /// Tools for the player, such as the admin panel or the options menu, are not things
+    /// Tools for the player, such as the admin panel or the build menu, are not things
     /// the character reads, so they stay legible even with alexia.
     /// </summary>
-    private static bool IsExcluded(Control control)
+    private static bool IsExcludedWindow(Control window)
     {
-        var type = control.GetType();
+        var type = window.GetType();
 
-        foreach (var excluded in ExcludedTypes)
+        foreach (var excluded in ExcludedWindowTypes)
         {
-            if (excluded.IsInstanceOfType(control))
+            if (excluded.IsInstanceOfType(window))
                 return true;
         }
 
