@@ -364,12 +364,15 @@ public sealed class PhysiologyTest : GameTest
 
     [Test]
     [RunOnSide(Side.Server)]
-    public void UpstreamPatientsKeepDamageThresholds()
+    public void EveryHumanUsesExperimentalDamageHandling()
     {
+        // Every human runs the experimental system now, so a heavy blunt hit is spread over
+        // the organs instead of crossing a flat damage threshold.
         var patient = SSpawn("MobHuman");
         var damage = SEntMan.System<DamageableSystem>();
         damage.TryChangeDamage(patient, new DamageSpecifier { DamageDict = { ["Blunt"] = FixedPoint2.New(300) } }, true);
-        Assert.That(SEntMan.System<MobStateSystem>().IsDead(patient), Is.True);
+        Assert.That(SEntMan.System<MobStateSystem>().IsDead(patient), Is.False);
+        Assert.That(damage.GetTotalDamage((patient, SComp<DamageableComponent>(patient))), Is.GreaterThan(FixedPoint2.Zero));
 
         var experimental = SSpawn("MobMedicalTestHuman");
         damage.TryChangeDamage(experimental, new DamageSpecifier { DamageDict = { ["Blunt"] = FixedPoint2.New(300) } }, true);
@@ -439,8 +442,13 @@ public sealed class PhysiologyTest : GameTest
         physiology.Update(140f);
         Assert.That(respirator.IsBreathing(patient), Is.False);
 
+        // Every human follows the experimental breathing rules, so a dead brain stops the
+        // breathing just like it does for the test patient.
         var upstream = SSpawn("MobHuman");
-        SEntMan.System<MobStateSystem>().ChangeMobState(upstream, MobState.Critical);
+        var upstreamBrain = SEntMan.System<BodySystem>().EnumerateOrgans<CerebralHealthComponent>(upstream).Single().Comp2;
+        upstreamBrain.Damage = 100f;
+        physiology.Update(16f);
+        Assert.That(SEntMan.System<MobStateSystem>().IsDead(upstream), Is.True);
         Assert.That(respirator.IsBreathing(upstream), Is.False);
     }
 
@@ -501,7 +509,8 @@ public sealed class PhysiologyTest : GameTest
         Assert.That(scan.Physiology.InternalWarning && scan.Physiology.NeurologicalWarning, Is.True);
         Assert.That(scan.Physiology.Injuries.Single().Category, Is.EqualTo("LegLeft"));
         Assert.That(scan.Physiology.Injuries.Single().Bleeding, Is.EqualTo(4f).Within(0.001f));
-        Assert.That(analyzer.GetHealthAnalyzerUiState(SSpawn("MobHuman")).Physiology, Is.Null);
+        // Every human reports a physiology scan now, not only the test patient.
+        Assert.That(analyzer.GetHealthAnalyzerUiState(SSpawn("MobHuman")).Physiology, Is.Not.Null);
         physiology.Update(140f);
         Assert.That(analyzer.GetHealthAnalyzerUiState(patient).Physiology!.BrainDamage, Is.Zero);
         Assert.That(analyzer.GetHealthAnalyzerUiState(patient).Physiology!.NeurologicalWarning, Is.True);

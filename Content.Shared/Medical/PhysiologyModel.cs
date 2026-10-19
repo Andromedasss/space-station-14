@@ -21,16 +21,52 @@ public static class PhysiologyModel
 
     public static float TemperatureMobility(float kelvin) => Math.Clamp((kelvin - 293.15f) / 15f, 0.2f, 1f);
 
+    /// <summary>
+    /// Heart rate and blood pressure of the experimental patient.
+    /// The rate answers the stress on the body: blood loss and hypoxia drive it up, pain and
+    /// fear add to it, fever quickens it, chilling and sedation slow it down, and a failing
+    /// heart or a collapsing circulation weakens it towards a thready pulse. The pressure
+    /// follows the volume and the circulation, with pain and fever tightening the vessels.
+    /// </summary>
     public static (float Pulse, float Systolic, float Diastolic) Vitals(float blood, float heart,
-        float circulation, float kelvin, float pain, float sedation)
+        float circulation, float kelvin, float pain, float sedation, float oxygenDebt, float fear)
     {
-        var perfusion = Math.Clamp(blood, 0f, 1f) * Math.Clamp(circulation, 0f, 1f);
-        var pressure = Math.Clamp(perfusion, 0f, 1f);
-        var pulse = heart <= 0f || blood <= 0.05f ? 0f
-            : Math.Clamp((80f + 60f * (1f - Math.Clamp(blood, 0f, 1f))
-                + 30f * (1f - heart) + pain * 0.2f - Math.Min(sedation, 10f) * 2f)
-                * Math.Clamp(1f + (kelvin - 310.15f) * 0.04f, 0.25f, 1.6f), 15f, 200f);
-        return (pulse, 120f * pressure, 80f * pressure);
+        var volume = Math.Clamp(blood, 0f, 1f);
+        var pump = Math.Clamp(heart, 0f, 1f);
+        var perfusion = volume * Math.Clamp(circulation, 0f, 1f);
+
+        var celsius = kelvin - 273.15f;
+        var fever = Math.Max(0f, celsius - 37f);
+        var chill = Math.Max(0f, 37f - celsius);
+        // Pain and fever tighten the vessels and raise the pressure.
+        var tone = 1f + 0.0015f * pain + 0.001f * fever;
+
+        // The pressure follows the volume and the circulation. Assisted circulation keeps the
+        // pressure up even when the heart itself cannot beat.
+        var pressure = Math.Clamp(perfusion * tone, 0f, 1.5f);
+        var systolic = Math.Clamp(120f * pressure, 0f, 240f);
+        var diastolic = Math.Clamp(80f * pressure, 0f, 150f);
+
+        // The pulse is the heart's own beat. Without a working heart or blood there is none.
+        if (pump <= 0f || volume <= 0.05f)
+            return (0f, systolic, diastolic);
+
+        var bloodLoss = Math.Clamp(1f - volume, 0f, 1f);
+        var hypoxia = Math.Clamp(oxygenDebt / UnconsciousDebt, 0f, 1f);
+        // A perfusion this low is terminal shock, the beat thins out instead of racing.
+        var collapse = Math.Clamp(1f - perfusion / 0.35f, 0f, 1f);
+
+        var pulse = 80f
+            + 78f * bloodLoss
+            + 52f * hypoxia
+            + 0.24f * pain
+            + 0.28f * fear
+            + 10f * fever
+            - 2.2f * chill
+            - 2.4f * Math.Min(sedation, 10f)
+            - 30f * (1f - pump)
+            - 30f * collapse;
+        return (Math.Clamp(pulse, 0f, 210f), systolic, diastolic);
     }
 
     public static float SedativeRespiratoryDrive(float dose)

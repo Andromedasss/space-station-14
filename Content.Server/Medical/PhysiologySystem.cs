@@ -180,9 +180,20 @@ public sealed class PhysiologySystem : EntitySystem
 
         var systemicPenalty = 1f - Math.Clamp((state.RenalWaste + state.HepaticWaste + state.Contamination - 30f) / 100f, 0f, 0.8f);
         state.CirculatoryFunction *= PhysiologyModel.TemperaturePump(state.Temperature) * systemicPenalty;
+
+        // The brain carries the stress that drives the heart rate.
+        var oxygenDebt = 0f;
+        var fear = 0f;
+        foreach (var organ in _body.EnumerateOrgans<CerebralHealthComponent>(uid))
+        {
+            oxygenDebt = organ.Comp2.OxygenDebt;
+            fear = organ.Comp2.Fear;
+            break;
+        }
+
         (state.Pulse, state.Systolic, state.Diastolic) = PhysiologyModel.Vitals(state.BloodFraction,
             state.HeartFunction, state.CirculatoryFunction, state.Temperature, _pain.Sample(uid).Pain,
-            _sedation.Dose(uid));
+            _sedation.Dose(uid), oxygenDebt, fear);
 
         // Upstream saturation is a reserve measured in seconds, NOT SpO2.
         state.RespiratorySupply = TryComp<RespiratorComponent>(uid, out var respirator)

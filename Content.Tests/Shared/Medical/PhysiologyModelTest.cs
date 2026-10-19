@@ -19,10 +19,72 @@ public sealed class PhysiologyModelTest
     [Test]
     public void AssistedCirculationDoesNotInventASpontaneousPulse()
     {
-        var vitals = PhysiologyModel.Vitals(1f, 0f, 0.6f, 310.15f, 0f, 0f);
+        var vitals = PhysiologyModel.Vitals(1f, 0f, 0.6f, 310.15f, 0f, 0f, 0f, 0f);
         Assert.That(vitals.Pulse, Is.Zero);
         Assert.That(vitals.Systolic, Is.EqualTo(72f).Within(0.001f));
         Assert.That(vitals.Diastolic, Is.EqualTo(48f).Within(0.001f));
+    }
+
+    [Test]
+    public void HealthyPatientHasNormalVitals()
+    {
+        var vitals = PhysiologyModel.Vitals(1f, 1f, 1f, 310.15f, 0f, 0f, 0f, 0f);
+        Assert.That(vitals.Pulse, Is.EqualTo(80f).Within(0.001f));
+        Assert.That(vitals.Systolic, Is.EqualTo(120f).Within(0.001f));
+        Assert.That(vitals.Diastolic, Is.EqualTo(80f).Within(0.001f));
+    }
+
+    [Test]
+    public void BloodLossRacesTheHeartAndDropsThePressure()
+    {
+        var healthy = PhysiologyModel.Vitals(1f, 1f, 1f, 310.15f, 0f, 0f, 0f, 0f);
+        var bleeding = PhysiologyModel.Vitals(0.5f, 1f, 1f, 310.15f, 0f, 0f, 0f, 0f);
+        Assert.That(bleeding.Pulse, Is.GreaterThan(healthy.Pulse));
+        Assert.That(bleeding.Systolic, Is.LessThan(healthy.Systolic));
+    }
+
+    [Test]
+    public void HypoxiaRacesTheHeart()
+    {
+        var healthy = PhysiologyModel.Vitals(1f, 1f, 1f, 310.15f, 0f, 0f, 0f, 0f);
+        var hypoxic = PhysiologyModel.Vitals(1f, 1f, 1f, 310.15f, 0f, 0f, 15f, 0f);
+        Assert.That(hypoxic.Pulse, Is.GreaterThan(healthy.Pulse));
+    }
+
+    [Test]
+    public void PainAndFearRaceTheHeartAndTightenTheVessels()
+    {
+        var healthy = PhysiologyModel.Vitals(1f, 1f, 1f, 310.15f, 0f, 0f, 0f, 0f);
+        var stressed = PhysiologyModel.Vitals(1f, 1f, 1f, 310.15f, 80f, 0f, 0f, 80f);
+        Assert.That(stressed.Pulse, Is.GreaterThan(healthy.Pulse));
+        Assert.That(stressed.Systolic, Is.GreaterThan(healthy.Systolic));
+    }
+
+    [Test]
+    public void FeverQuickensAndChillingSlowsTheHeart()
+    {
+        var healthy = PhysiologyModel.Vitals(1f, 1f, 1f, 310.15f, 0f, 0f, 0f, 0f);
+        var fever = PhysiologyModel.Vitals(1f, 1f, 1f, 313.15f, 0f, 0f, 0f, 0f);
+        var chilled = PhysiologyModel.Vitals(1f, 1f, 1f, 300.15f, 0f, 0f, 0f, 0f);
+        Assert.That(fever.Pulse, Is.GreaterThan(healthy.Pulse));
+        Assert.That(chilled.Pulse, Is.LessThan(healthy.Pulse));
+    }
+
+    [Test]
+    public void SedationSlowsTheHeart()
+    {
+        var healthy = PhysiologyModel.Vitals(1f, 1f, 1f, 310.15f, 0f, 0f, 0f, 0f);
+        var sedated = PhysiologyModel.Vitals(1f, 1f, 1f, 310.15f, 0f, 6f, 0f, 0f);
+        Assert.That(sedated.Pulse, Is.LessThan(healthy.Pulse));
+    }
+
+    [Test]
+    public void AFailingHeartWeakenstheBeat()
+    {
+        var healthy = PhysiologyModel.Vitals(1f, 1f, 1f, 310.15f, 0f, 0f, 0f, 0f);
+        var failing = PhysiologyModel.Vitals(1f, 0.3f, 0.3f, 310.15f, 0f, 0f, 0f, 0f);
+        Assert.That(failing.Pulse, Is.LessThan(healthy.Pulse));
+        Assert.That(failing.Systolic, Is.LessThan(healthy.Systolic));
     }
 
     [TestCase(0f, 1f)]
