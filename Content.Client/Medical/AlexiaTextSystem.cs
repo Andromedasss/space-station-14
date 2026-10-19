@@ -20,6 +20,36 @@ public sealed class AlexiaTextSystem : EntitySystem
     [Dependency] private IEntityManager _entities = default!;
     [Dependency] private IPlayerManager _players = default!;
 
+    /// <summary>
+    /// Controls that must stay readable: the chat is heard, not read, and the medical
+    /// debug window is a tool for the admin rather than something the character reads.
+    /// </summary>
+    private static readonly Type[] ExcludedTypes = { typeof(ChatBox), typeof(MedicalDebugWindow) };
+
+    /// <summary>
+    /// Namespaces of player tools that stay legible, such as the admin panel, the build
+    /// menu and the options menu. These are interfaces for the player, not things the
+    /// character reads in the fiction.
+    /// </summary>
+    private static readonly string[] ExcludedNamespaces =
+    {
+        "Content.Client.Administration",
+        "Content.Client.Options",
+        "Content.Client.DebugMon",
+        "Content.Client.Construction",
+        "Content.Client.Sandbox",
+        "Content.Client.Info",
+        "Content.Client.CharacterInfo",
+        "Content.Client.LateJoin",
+        "Content.Client.Eui",
+        "Content.Client.Voting",
+        "Content.Client.RoundEnd",
+        "Content.Client.Guidebook",
+        "Content.Client.Commands",
+        "Content.Client.Tools",
+        "Content.Client.ContextMenu",
+    };
+
     private readonly Dictionary<Control, Tracked> _tracked = new();
 
     private sealed class Tracked
@@ -148,7 +178,7 @@ public sealed class AlexiaTextSystem : EntitySystem
         if (control is RichTextLabel or Label)
         {
             // Chat is heard, not read, so it stays legible.
-            if (control is not ChatBox)
+            if (!IsExcluded(control))
                 yield return control;
         }
 
@@ -157,5 +187,32 @@ public sealed class AlexiaTextSystem : EntitySystem
             foreach (var found in CollectTextControls(child))
                 yield return found;
         }
+    }
+
+    /// <summary>
+    /// Tools for the player, such as the admin panel or the options menu, are not things
+    /// the character reads, so they stay legible even with alexia.
+    /// </summary>
+    private static bool IsExcluded(Control control)
+    {
+        var type = control.GetType();
+
+        foreach (var excluded in ExcludedTypes)
+        {
+            if (excluded.IsInstanceOfType(control))
+                return true;
+        }
+
+        var space = type.Namespace;
+        if (space == null)
+            return false;
+
+        foreach (var excluded in ExcludedNamespaces)
+        {
+            if (space.StartsWith(excluded, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 }
