@@ -61,7 +61,12 @@ public sealed class MedicalDebugWindow : FancyWindow
         MinWidth = 620;
         MinHeight = 640;
 
-        var root = new BoxContainer { Orientation = BoxContainer.LayoutOrientation.Vertical };
+        var root = new BoxContainer
+        {
+            Orientation = BoxContainer.LayoutOrientation.Vertical,
+            HorizontalExpand = true,
+            VerticalExpand = true,
+        };
 
         // Header: target selection and global actions.
         var header = new BoxContainer { Orientation = BoxContainer.LayoutOrientation.Horizontal };
@@ -84,6 +89,10 @@ public sealed class MedicalDebugWindow : FancyWindow
         root.AddChild(_status);
 
         var tabs = new TabContainer();
+        // The tab container must fill the remaining space, otherwise the tab content
+        // collapses to the height of the tab strip and nothing is visible.
+        tabs.HorizontalExpand = true;
+        tabs.VerticalExpand = true;
 
         tabs.AddChild(BuildOverviewTab());
         tabs.AddChild(BuildOrganTab());
@@ -112,14 +121,14 @@ public sealed class MedicalDebugWindow : FancyWindow
 
     private Control BuildOverviewTab()
     {
-        var scroll = new ScrollContainer();
+        var scroll = new ScrollContainer { HorizontalExpand = true, VerticalExpand = true };
         scroll.AddChild(_overview);
         return scroll;
     }
 
     private Control BuildOrganTab()
     {
-        var scroll = new ScrollContainer();
+        var scroll = new ScrollContainer { HorizontalExpand = true, VerticalExpand = true };
         var content = new BoxContainer { Orientation = BoxContainer.LayoutOrientation.Vertical };
 
         content.AddChild(new Label { Text = "Organ function (0 - 1)" });
@@ -155,7 +164,7 @@ public sealed class MedicalDebugWindow : FancyWindow
 
     private Control BuildWoundTab()
     {
-        var scroll = new ScrollContainer();
+        var scroll = new ScrollContainer { HorizontalExpand = true, VerticalExpand = true };
         var content = new BoxContainer { Orientation = BoxContainer.LayoutOrientation.Vertical };
 
         content.AddChild(new Label { Text = "Localized injuries" });
@@ -193,7 +202,7 @@ public sealed class MedicalDebugWindow : FancyWindow
 
     private Control BuildNeuroTab()
     {
-        var scroll = new ScrollContainer();
+        var scroll = new ScrollContainer { HorizontalExpand = true, VerticalExpand = true };
         var content = new BoxContainer { Orientation = BoxContainer.LayoutOrientation.Vertical };
 
         content.AddChild(new Label { Text = "Symptoms" });
