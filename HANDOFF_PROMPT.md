@@ -9,25 +9,31 @@
 Ты работаешь над экспериментальной системой медицины в форке Space Station 14 (SS14).
 Проект уже частично сделан, его нужно продолжать, а не начинать заново.
 
-### 1. Где лежит проект (ВАЖНО, есть два похожих пути!)
+### 1. Где лежит проект
+
+Папка была переименована — старый путь `C:\Users\Andromeda\Desktop\нейрослоп\тест`
+больше не существует (осталась пустая папка `нейрослоп`, её можно удалить).
 
 ```
-C:\Users\Andromeda\Desktop\нейрослоп\тест\SS14     ← ЭТО рабочая папка с кодом
-C:\Users\Andromeda\Desktop\нейрослоп\тест\SS14     ← ЭТО пустая папка, в ней только Content.Client
+C:\Users\Andromeda\Desktop\ss14-work           ← родительская папка (kilo.json, .kilo/ старого проекта)
+C:\Users\Andromeda\Desktop\ss14-work\SS14      ← ЭТО корень Kilo-проекта И git-репозиторий (VS Code открыт здесь)
+C:\Users\Andromeda\Desktop\ss14-work\SS14\.kilo\worktrees\<имя>  ← worktree агента, своя ветка
 ```
 
-Разница в одну букву (`нейрослоп` против `нейрослоп`). Если сомневаешься — проверь:
-в рабочей папке должны быть `Content.Server`, `Content.Shared`, `Content.Client`,
-`Resources`, `RobustToolbox`, `Content.IntegrationTests`, `Content.Tests`.
+Проверка, что попал в правильную папку: в `SS14` должны быть `Content.Server`,
+`Content.Shared`, `Content.Client`, `Resources`, `RobustToolbox`,
+`Content.IntegrationTests`, `Content.Tests`.
 
-**Всегда работай относительными путями от `C:\Users\Andromeda\Desktop\нейрослоп\тест`:**
+**Всегда работай относительными путями от `C:\Users\Andromeda\Desktop\ss14-work`:**
 ```
 dotnet build SS14\Content.Server\Content.Server.csproj
 ```
-Абсолютные пути с кириллицей в PowerShell ломаются непредсказуемо (то работают, то нет).
+Путь теперь чистый ASCII — проблем с кириллицей больше нет.
 
-Kilo-проект (где `kilo.json` и `.kilo/`) — это папка `тест`, она **не** является git-репозиторием.
-Git-репозиторий — вложенная папка `SS14`.
+Корень Kilo-проекта — теперь сама папка `SS14` (VS Code открыт в ней), там же
+`.kilo/agent-manager.json` и `.kilo/setup-script.ps1` + `run-script.ps1`.
+`kilo.json` лежит уровнем выше (`ss14-work\kilo.json`) и наследуется вверх по дереву.
+Git-репозиторий — `SS14`, ветка `feature/medical-physiology`.
 
 ### 2. Состояние ветки
 
@@ -221,11 +227,15 @@ SS14/MEDICAL_SURGERY_GUIDE.md                         все операции и
     PowerShell 5.1 читает .ps1 без BOM как ANSI → кириллица в путях искажается.
 20. **Анализатор `RA0009`/`RA0010`** — сервер и клиент должны быть собраны из одного
     состояния, иначе рассинхрон хэшей сериализаторов.
+21. **Переименование корня ломает git-worktree.** Основной checkout git чинит сам,
+    а записи в `.git/worktrees/*` остаются со старым путём (ветка помечается
+    `prunable`). Лечится: `git worktree repair <новый путь worktree>` из `SS14`.
+    Также следи за `git worktree list` — пути в нём должны быть актуальными.
 
 ### 6. Команды
 
 ```powershell
-# из C:\Users\Andromeda\Desktop\нейрослоп\тест
+# из C:\Users\Andromeda\Desktop\ss14-work
 dotnet build SS14\Content.Shared\Content.Shared.csproj
 dotnet build SS14\Content.Server\Content.Server.csproj
 dotnet build SS14\Content.Client\Content.Client.csproj

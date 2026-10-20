@@ -6,17 +6,18 @@
 
 | Что | Значение |
 |---|---|
-| Репозиторий | `C:\Users\Andromeda\Desktop\нейрослоп\тест\SS14` (git, ветка `feature/medical-physiology`) |
-| Kilo-проект | `C:\Users\Andromeda\Desktop\нейрослоп\тест` (там `kilo.json` и `.kilo/`, **не** git-репозиторий) |
+| Репозиторий | `C:\Users\Andromeda\Desktop\ss14-work\SS14` (git, ветка `feature/medical-physiology`) |
+| Kilo-проект | `C:\Users\Andromeda\Desktop\ss14-work` (там `kilo.json` и `.kilo/`, **не** git-репозиторий) |
 | dotnet | 10.0.402, SDK по `global.json` (`rollForward: latestFeature`) |
-| Рабочий каталог в shell | `C:\Users\Andromeda\Desktop\нейрослоп\тест` |
+| Рабочий каталог в shell | `C:\Users\Andromeda\Desktop\ss14-work` |
 
-⚠️ **Ловушка:** на рабочем столе две почти одинаковые папки — `нейрослоп` (правильная, полный SS14) и `нейросlop` (с `o` вместо `оп`, там только `Content.Client`). Пути с кириллицей в PowerShell капризничают: `dotnet build "SS14\Content.Server\Content.Server.csproj"` из корня `тест` работает, абсолютный путь с кириллицей — нет. **Работать относительными путями от `тест`.**
+⚠️ **Ловушка (история):** проект раньше лежал в `C:\Users\Andromeda\Desktop\нейрослоп\тест`, а рядом была почти такая же папка `нейросlop` (с `o` вместо `оп`, там только `Content.Client`). Сейчас старая папка пуста и удалять её можно, но **всегда работать относительными путями от `C:\Users\Andromeda\Desktop\ss14-work`** — так надёжнее, чем абсолютные пути.
+💡 Проблема с кириллицей в путях ушла: новое имя `ss14-work` — чистый ASCII.
 
 ### Команды
 
 ```powershell
-# сборка (из C:\Users\Andromeda\Desktop\нейрослоп\тест)
+# сборка (из C:\Users\Andromeda\Desktop\ss14-work)
 dotnet build SS14\Content.Shared\Content.Shared.csproj
 dotnet build SS14\Content.Server\Content.Server.csproj
 dotnet build SS14\Content.Client\Content.Client.csproj
@@ -115,6 +116,7 @@ dotnet run --no-build --project Content.Client\Content.Client.csproj -- --connec
 23. **Группы крови и переливание.** `BloodGroup` в `PhysiologyComponent` (сетевое поле, назначается один раз при `ComponentInit`). Мешок несёт группу и **долю полного объёма крови** (0.25), а не количество реагента — тогда работает для любого вида независимо от его эталонного раствора. Совместимость: донор не должен нести антиген, которого нет у реципиента, плюс Rh+ только в Rh+. Несовместимость → пациент теряет половину крови и начинает кровоточить. Группу видно **только через лабораторию**: проба берётся из пациента, прогоняется через анализатор, результат читается осмотром пробирки. `BloodstreamComponent` защищён `[Access]`, поэтому объём меняется только через `PhysiologySystem.TryIntervene(uid, "blood", value)`, а кровотечение через `BloodstreamSystem.TryModifyBleedAmount`.
 24. **Хук `BuildChecker` падал на кириллице в пути.** `git worktree add` запускает хук `post-checkout`, который зовёт `BuildChecker/git_helper.py`; там `subprocess.run(..., text=True)` декодировал вывод git в системной кодировке cp1252 и падал с `UnicodeDecodeError` — worktree создавался, но операция считалась неуспешной. Починил: `encoding="utf-8", errors="replace"` в `run_command` и `sys.stdout.reconfigure(...)`. **Фикс должен быть в коммите** — worktree берёт код из коммита, а не из рабочей папки.
 25. **Git не даёт одну ветку в двух worktree.** `git worktree add <path> feature/medical-physiology` → `fatal: 'feature/medical-physiology' is already used by worktree at ...`. Для параллельной работы нужен **новый** branch от нужной базы: `git worktree add <path> -b <new-branch> feature/medical-physiology`.
+26. **Переименование корня ломает git-worktree.** Корневой checkout git чинит сам, а записи в `.git/worktrees/*` остаются со старым путём — ветка помечается `prunable`, а `git worktree list` показывает несуществующий путь. Лечится из `SS14`: `git worktree repair <новый путь worktree>`. После этого проверь `git worktree list` — все пути должны быть актуальными.
 
 ## 6. Что сделано и что нет
 
@@ -126,8 +128,12 @@ dotnet run --no-build --project Content.Client\Content.Client.csproj -- --connec
 - Медицинское дебаг-меню: команда `/meddebug` (или клавиша **O**) — 4 вкладки: обзор (все параметры сканера + метаболизм), органы, раны, неврология.
 
 Не сделано / требует решения:
-- **Пуш в форк** не выполнен (28 коммитов локально).
-- `.kilo\setup-script.ps1` и `.kilo\run-script.ps1` лежат в `тест\.kilo\` — **вне git-репозитория**, поэтому не попадут в worktree. Дублировать в `SS14\.kilo\`, чтобы закоммитить.
+- **Пуш в форк** не выполнен (53 коммита локально).
+- `.kilo\setup-script.ps1` и `.kilo\run-script.ps1` перенесены в `SS14\.kilo\` (корень проекта теперь
+  `SS14`, туда же переехал Agent Manager). Они **намеренно не в git**: расширение Kilo само
+  добавляет `.kilo/setup-script*` в `.git/info/exclude`, а setup/run-скрипты Agent Manager
+  читает из `.kilo\` главного репозитория, а не из worktree — коммитить их не нужно.
+  `run-script.ps1` добавлен в `.git/info/exclude` вручную для симметрии.
 - `build_err.txt` / `build_log.txt` — мусор от сборки, не коммитить.
 - Папка `нейросlop` (с `o`) — лишняя, удалить.
 
