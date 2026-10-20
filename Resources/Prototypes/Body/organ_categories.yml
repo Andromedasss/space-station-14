@@ -2,6 +2,21 @@
   id: Torso
 
 - type: organCategory
+  id: Abdomen
+
+- type: organCategory
+  id: Groin
+
+- type: organCategory
+  id: KidneyLeft
+
+- type: organCategory
+  id: KidneyRight
+
+- type: organCategory
+  id: Intestines
+
+- type: organCategory
   id: Head
 
 - type: organCategory

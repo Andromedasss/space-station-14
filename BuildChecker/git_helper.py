@@ -16,6 +16,13 @@ SOLUTION_PATH = Path("..") / "SpaceStation14.slnx"
 CURRENT_HOOKS_VERSION = "4"
 QUIET = len(sys.argv) == 2 and sys.argv[1] == "--quiet"
 
+# The repository may live in a path with non-ASCII characters, so the console has to
+# be able to encode them as well.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, OSError):
+    pass
+
 
 def run_command(command: List[str], capture: bool = False) -> subprocess.CompletedProcess:
     """
@@ -28,7 +35,9 @@ def run_command(command: List[str], capture: bool = False) -> subprocess.Complet
     sys.stdout.flush()
 
     if capture:
-        completed = subprocess.run(command, stdout=subprocess.PIPE, text=True)
+        # The repository path may contain non-ASCII characters, so the output has to be
+        # decoded as UTF-8 instead of the system locale encoding.
+        completed = subprocess.run(command, stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
     else:
         completed = subprocess.run(command)
 

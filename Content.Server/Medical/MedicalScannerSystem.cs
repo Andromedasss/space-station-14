@@ -14,6 +14,8 @@ using Content.Shared.Climbing.Systems;
 using Content.Shared.DeviceLinking.Systems;
 using Content.Shared.Mobs.Components;
 using Content.Shared.Mobs.Systems;
+using Content.Shared.Medical.HealthAnalyzer;
+using Content.Shared.MedicalScanner;
 using Robust.Server.Containers;
 using static Content.Shared.MedicalScanner.SharedMedicalScannerComponent; // Hmm...
 
@@ -28,6 +30,8 @@ namespace Content.Server.Medical
         [Dependency] private MobStateSystem _mobStateSystem = default!;
         [Dependency] private ContainerSystem _containerSystem = default!;
         [Dependency] private SharedAppearanceSystem _appearance = default!;
+        [Dependency] private SharedUserInterfaceSystem _ui = default!;
+        [Dependency] private HealthAnalyzerSystem _health = default!;
 
         private const float UpdateRate = 1f;
         private float _updateDif;
@@ -45,6 +49,29 @@ namespace Content.Server.Medical
             SubscribeLocalEvent<MedicalScannerComponent, SinkPortDisconnectedEvent>(OnPortDisconnected);
             SubscribeLocalEvent<MedicalScannerComponent, AnchorStateChangedEvent>(OnAnchorChanged);
             SubscribeLocalEvent<MedicalScannerComponent, CanDropTargetEvent>(OnCanDragDropOn);
+            Subs.BuiEvents<MedicalScannerComponent>(HealthAnalyzerUiKey.Key,
+                subs => subs.Event<BoundUIOpenedEvent>(OnDiagnosticOpened));
+        }
+
+        private void OnDiagnosticOpened(Entity<MedicalScannerComponent> ent, ref BoundUIOpenedEvent args)
+        {
+            UpdateDiagnostic(ent, ent.Comp);
+        }
+
+        private void UpdateDiagnostic(EntityUid uid, MedicalScannerComponent scanner)
+        {
+            if (!_ui.HasUi(uid, HealthAnalyzerUiKey.Key))
+                return;
+            var state = GetDiagnosticState(uid, scanner);
+            _ui.SetUiState(uid, HealthAnalyzerUiKey.Key, state);
+        }
+
+        public HealthAnalyzerUiState GetDiagnosticState(EntityUid uid, MedicalScannerComponent? scanner = null)
+        {
+            if (!Resolve(uid, ref scanner) || !this.IsPowered(uid, EntityManager))
+                return new HealthAnalyzerUiState();
+            // The stationary scanner always reports a detailed physiology scan.
+            return _health.GetHealthAnalyzerUiState(scanner.BodyContainer.ContainedEntity, true, true);
         }
 
         private void OnCanDragDropOn(EntityUid uid, MedicalScannerComponent component, ref CanDropTargetEvent args)
@@ -217,6 +244,7 @@ namespace Content.Server.Medical
             while (query.MoveNext(out var uid, out var scanner))
             {
                 UpdateAppearance(uid, scanner);
+                UpdateDiagnostic(uid, scanner);
             }
         }
 
@@ -233,6 +261,7 @@ namespace Content.Server.Medical
 
             _containerSystem.Insert(to_insert, scannerComponent.BodyContainer);
             UpdateAppearance(uid, scannerComponent);
+            UpdateDiagnostic(uid, scannerComponent);
         }
 
         public void EjectBody(EntityUid uid, MedicalScannerComponent? scannerComponent)
@@ -246,6 +275,7 @@ namespace Content.Server.Medical
             _containerSystem.Remove(contained, scannerComponent.BodyContainer);
             _climbSystem.ForciblySetClimbing(contained, uid);
             UpdateAppearance(uid, scannerComponent);
+            UpdateDiagnostic(uid, scannerComponent);
         }
     }
 }

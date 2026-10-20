@@ -1,11 +1,15 @@
 using Content.Server.Ghost;
 using Content.Server.Hands.Systems;
+using Content.Server.Medical;
 using Content.Shared.Administration.Logs;
+using Content.Shared.Body;
+using Content.Shared.Body.Systems;
 using Content.Shared.Damage.Components;
 using Content.Shared.Database;
 using Content.Shared.IdentityManagement;
 using Content.Shared.Interaction.Events;
 using Content.Shared.Item;
+using Content.Shared.Medical;
 using Content.Shared.Mind;
 using Content.Shared.Mind.Components;
 using Content.Shared.Mobs.Components;
@@ -27,6 +31,7 @@ public sealed partial class SuicideSystem : SharedSuicideSystem
     [Dependency] private MobStateSystem _mobState = default!;
     [Dependency] private SharedPopupSystem _popup = default!;
     [Dependency] private GhostSystem _ghostSystem = default!;
+    [Dependency] private BodySystem _body = default!;
     [Dependency] private EntityQuery<ItemComponent> _itemQuery = default!;
 
     private static readonly ProtoId<TagPrototype> CannotSuicideTag = "CannotSuicide";
@@ -164,11 +169,26 @@ public sealed partial class SuicideSystem : SharedSuicideSystem
         {
             ApplyLethalDamage(victim, args.DamageSpecifier);
             args.Handled = true;
+            KillExperimentalPatient(victim);
             return;
         }
 
         args.DamageType ??= "Bloodloss";
         ApplyLethalDamage(victim, args.DamageType);
         args.Handled = true;
+        KillExperimentalPatient(victim);
+    }
+
+    /// <summary>
+    /// Experimental patients spread damage over their organs, so a flat lethal amount no
+    /// longer crosses the death threshold. Destroying the brain is what actually kills them.
+    /// </summary>
+    private void KillExperimentalPatient(EntityUid victim)
+    {
+        if (!HasComp<PhysiologyComponent>(victim))
+            return;
+
+        foreach (var (_, _, brain) in _body.EnumerateOrgans<CerebralHealthComponent>(victim))
+            brain.Damage = PhysiologyModel.MaximumBrainDamage;
     }
 }

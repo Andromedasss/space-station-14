@@ -35,6 +35,7 @@ namespace Content.Server.Power.EntitySystems
         private readonly HashSet<ApcNet> _apcNetReconnectQueue = new();
 
         private BatteryRampPegSolver _solver = new();
+        private bool _debugStationPower;
 
         public override void Initialize()
         {
@@ -66,6 +67,7 @@ namespace Content.Server.Power.EntitySystems
             SubscribeLocalEvent<PowerSupplierComponent, EntityUnpausedEvent>(PowerSupplierUnpaused);
 
             Subs.CVar(_cfg, CCVars.DebugPow3rDisableParallel, DebugPow3rDisableParallelChanged);
+            Subs.CVar(_cfg, CCVars.DebugStationPower, value => _debugStationPower = value, true);
         }
 
         private void DebugPow3rDisableParallelChanged(bool val)
@@ -326,7 +328,7 @@ namespace Content.Server.Power.EntitySystems
                 return false;
 
             // Doesn't need power, so always powered
-            if (!comp.NeedsPower)
+            if (_debugStationPower || !comp.NeedsPower)
                 return true;
 
             return comp.Load > 0 && MathHelper.CloseToPercent(comp.NetworkLoad.ReceivingPower, comp.Load);
@@ -409,6 +411,9 @@ namespace Content.Server.Power.EntitySystems
             var enumerator = EntityQueryEnumerator<PowerConsumerComponent>();
             while (enumerator.MoveNext(out var uid, out var consumer))
             {
+                if (_debugStationPower)
+                    consumer.NetworkLoad.ReceivingPower = consumer.DrawRate;
+
                 var newRecv = consumer.NetworkLoad.ReceivingPower;
                 ref var lastRecv = ref consumer.LastReceived;
                 if (MathHelper.CloseToPercent(lastRecv, newRecv))

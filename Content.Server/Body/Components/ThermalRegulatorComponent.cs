@@ -62,3 +62,12 @@ public sealed partial class ThermalRegulatorComponent : Component
     [DataField]
     public float ThermalRegulationTemperatureThreshold;
 }
+
+/// <summary>Optional body physiology modifies heat generation and the thermoregulatory target.</summary>
+[ByRefEvent]
+public record struct ThermalRegulationEvent
+{
+    public float Capacity;
+    public float TargetOffset;
+    public ThermalRegulationEvent() { Capacity = 1f; TargetOffset = 0f; }
+}

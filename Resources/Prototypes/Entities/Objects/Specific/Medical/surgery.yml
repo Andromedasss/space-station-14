@@ -20,6 +20,9 @@
   parent: BaseToolSurgery
   description: A surgical tool used to cauterize open wounds.
   components:
+  - type: MedicalSurgeryTool
+    action: Close
+    delay: 4
   - type: Sprite
     sprite: Objects/Specific/Medical/Surgery/cautery.rsi
     state: cautery
@@ -66,6 +69,9 @@
   parent: BaseToolSurgery
   description: A surgical tool used to make incisions into flesh.
   components:
+  - type: MedicalSurgeryTool
+    action: Incise
+    delay: 4
   - type: Tool
     qualities:
     - Slicing
@@ -145,6 +151,9 @@
   parent: BaseToolSurgery
   description: A surgical tool used to hold open incisions.
   components:
+  - type: MedicalSurgeryTool
+    action: Retract
+    delay: 4
   - type: Sprite
     sprite: Objects/Specific/Medical/Surgery/scissors.rsi
     state: retractor
@@ -158,19 +167,95 @@
   parent: Retractor
   description: A surgical tool used to compress blood vessels to prevent bleeding.
   components:
+  - type: MedicalSurgeryTool
+    action: Clamp
+    delay: 4
   - type: Sprite
     state: hemostat
   - type: Item
     heldPrefix: hemostat
     storedRotation: 90
 
-  # - type: entity
-  #   name: bone setter
-  #   id: BoneSetter
-  #   parent: Retractor
-  #   description: A surgical tool used for setting bones.
-  #   components:
-# Saws
+- type: entity
+  name: organ extractor
+  id: SurgicalExtractor
+  parent: Hemostat
+  description: A surgical tool used to extract internal organs from an opened body.
+  components:
+  - type: MedicalSurgeryTool
+    action: Extract
+    delay: 8
+  - type: Sprite
+    state: hemostat
+  - type: Item
+    heldPrefix: hemostat
+    storedRotation: 90
+
+- type: entity
+  name: bone setter
+  id: BoneSetter
+  parent: Hemostat
+  description: A surgical tool used for setting broken bones.
+  components:
+  - type: MedicalSurgeryTool
+    action: RepairFracture
+    delay: 8
+  - type: Sprite
+    state: hemostat
+  - type: Item
+    heldPrefix: hemostat
+    storedRotation: 90
+
+- type: entity
+  name: vascular repair tool
+  id: VascularRepairTool
+  parent: Hemostat
+  description: A surgical tool used to repair damaged blood vessels inside an opened body.
+  components:
+  - type: MedicalSurgeryTool
+    action: RepairVessel
+    delay: 8
+  - type: Sprite
+    state: hemostat
+  - type: Item
+    heldPrefix: hemostat
+    storedRotation: 90
+
+- type: entity
+  name: prosthetic repair tool
+  id: ProstheticRepairTool
+  parent: Drill
+  description: A surgical tool used to repair damaged prosthetic limbs.
+  components:
+  - type: MedicalSurgeryTool
+    action: RepairProsthetic
+    delay: 8
+
+- type: entity
+  name: neural rehabilitation probe
+  id: NeuralRehabilitationProbe
+  parent: Drill
+  description: A surgical probe used to rehabilitate a brain injury once the skull is open.
+  components:
+  - type: MedicalSurgeryTool
+    action: RehabilitateNeurology
+    delay: 20
+
+- type: entity
+  name: surgical antiseptic
+  id: SurgicalAntiseptic
+  parent: BaseItem
+  description: A sterile swab used to clean a surgical site before operating on it.
+  components:
+  - type: MedicalSurgeryTool
+    action: Disinfect
+    delay: 4
+  - type: Sprite
+    sprite: Objects/Specific/Medical/medical.rsi
+    state: gauze
+  - type: Item
+    sprite: Objects/Specific/Medical/medical.rsi
+    state: gauze
 
 - type: entity
   name: metal saw
@@ -178,6 +263,9 @@
   parent: BaseToolSurgery
   description: For cutting wood and other objects to pieces. Or sawing bones, in case of emergency.
   components:
+  - type: MedicalSurgeryTool
+    action: SawBone
+    delay: 6
   - type: Utensil
     types:
       - Knife

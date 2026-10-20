@@ -1,0 +1,33 @@
+# Development only. Do not use this configuration for a public server.
+[net]
+bindto = "127.0.0.1"
+port = 1212
+upnp = false
+max_connections = 16
+
+[status]
+bind = "127.0.0.1:1212"
+
+[hub]
+advertise = false
+
+[game]
+hostname = "SS14 Local Development"
+role_timers = false
+role_loadout_timers = false
+map = "Box"
+defaultpreset = "Extended"
+lobbyenabled = true
+lobbyduration = 15
+
+[config]
+preset_development = false
+
+[console]
+loginlocal = true
+
+[database]
+engine = "sqlite"
+
+[debug]
+station_power = true

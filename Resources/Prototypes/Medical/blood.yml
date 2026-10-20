@@ -1,0 +1,117 @@
+﻿# Blood handling for the experimental medical system: donor bags, sampling vials and the laboratory.
+
+- type: entity
+  parent: BaseItem
+  id: MedicalTestBloodBag
+  abstract: true
+  name: blood bag
+  description: A sealed bag of donor blood. Use it on a patient to transfuse them. Check the group before you do.
+  components:
+  - type: Item
+    size: Small
+    icon: Objects/Consumable/Drinks/bloodglass.rsi
+    state: fill-1
+  - type: BloodBag
+    group: ONegative
+    volume: 0.25
+
+- type: entity
+  parent: MedicalTestBloodBag
+  id: MedicalTestBloodBagONegative
+  name: O negative blood bag
+  description: Donor blood of group O negative. It fits every patient, but the supply is rare.
+  components:
+  - type: BloodBag
+    group: ONegative
+
+- type: entity
+  parent: MedicalTestBloodBag
+  id: MedicalTestBloodBagOPositive
+  name: O positive blood bag
+  description: Donor blood of group O positive. It fits R positive patients only.
+  components:
+  - type: BloodBag
+    group: OPositive
+
+- type: entity
+  parent: MedicalTestBloodBag
+  id: MedicalTestBloodBagANegative
+  name: A negative blood bag
+  description: Donor blood of group A negative. It fits A and AB patients.
+  components:
+  - type: BloodBag
+    group: ANegative
+
+- type: entity
+  parent: MedicalTestBloodBag
+  id: MedicalTestBloodBagAPositive
+  name: A positive blood bag
+  description: Donor blood of group A positive. It fits A positive and AB positive patients.
+  components:
+  - type: BloodBag
+    group: APositive
+
+- type: entity
+  parent: MedicalTestBloodBag
+  id: MedicalTestBloodBagBNegative
+  name: B negative blood bag
+  description: Donor blood of group B negative. It fits B and AB patients.
+  components:
+  - type: BloodBag
+    group: BNegative
+
+- type: entity
+  parent: MedicalTestBloodBag
+  id: MedicalTestBloodBagBPositive
+  name: B positive blood bag
+  description: Donor blood of group B positive. It fits B positive and AB positive patients.
+  components:
+  - type: BloodBag
+    group: BPositive
+
+- type: entity
+  parent: MedicalTestBloodBag
+  id: MedicalTestBloodBagABNegative
+  name: AB negative blood bag
+  description: Donor blood of group AB negative. It fits AB patients only.
+  components:
+  - type: BloodBag
+    group: ABNegative
+
+- type: entity
+  parent: MedicalTestBloodBag
+  id: MedicalTestBloodBagABPositive
+  name: AB positive blood bag
+  description: Donor blood of group AB positive. It fits AB positive patients only.
+  components:
+  - type: BloodBag
+    group: ABPositive
+
+# Sampling vial
+
+- type: entity
+  parent: BaseItem
+  id: MedicalTestBloodSample
+  name: blood sample vial
+  description: An empty vial. Use it on a patient to draw blood, then run the vial through a laboratory to get a result. The vial reveals the blood group of the patient.
+  components:
+  - type: Item
+    size: Small
+    icon: Objects/Consumable/Drinks/bloodglass.rsi
+    state: icon_empty
+  - type: MedicalBloodSample
+
+# Laboratory
+
+- type: entity
+  parent: BaseMachinePowered
+  id: MedicalTestLaboratory
+  name: blood laboratory analyser
+  description: Analyses a drawn blood sample. Use the vial on the analyser to read the blood group and the drug levels of the patient.
+  components:
+  - type: Sprite
+    sprite: Structures/Machines/microwave.rsi
+    state: mw0
+  - type: MedicalLaboratory
+  - type: ApcPowerReceiver
+    powerLoad: 100

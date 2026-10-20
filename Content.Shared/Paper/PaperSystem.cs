@@ -1,4 +1,5 @@
 using System.Linq;
+using Content.Shared.Medical;
 using Content.Shared.Administration.Logs;
 using Content.Shared.UserInterface;
 using Content.Shared.Database;
@@ -188,7 +189,23 @@ public sealed partial class PaperSystem : EntitySystem
 
         if (args.Text.Length <= entity.Comp.ContentSize)
         {
-            SetContent(entity, args.Text);
+            // Preserve existing text; only newly changed writing is affected.
+            var text = args.Text;
+            if (TryComp<PhysiologyComponent>(args.Actor, out var physiology)
+                && physiology.CognitiveSymptoms.HasFlag(MedicalCognitiveSymptoms.Agraphia))
+            {
+                var prefix = 0;
+                while (prefix < text.Length && prefix < entity.Comp.Content.Length
+                       && text[prefix] == entity.Comp.Content[prefix])
+                    prefix++;
+                var suffix = 0;
+                while (suffix < text.Length - prefix && suffix < entity.Comp.Content.Length - prefix
+                       && text[^(suffix + 1)] == entity.Comp.Content[^(suffix + 1)])
+                    suffix++;
+                text = text[..prefix] + NeurologicalTrauma.AgraphicWriting(text.Substring(prefix, text.Length - prefix - suffix))
+                    + text[(text.Length - suffix)..];
+            }
+            SetContent(entity, text);
 
             var paperStatus = string.IsNullOrWhiteSpace(args.Text) ? PaperStatus.Blank : PaperStatus.Written;
 
@@ -200,7 +217,7 @@ public sealed partial class PaperSystem : EntitySystem
 
             _adminLogger.Add(LogType.Chat,
                 LogImpact.Low,
-                $"{ToPrettyString(args.Actor):player} has written on {ToPrettyString(entity):entity} the following text: {args.Text}");
+                $"{ToPrettyString(args.Actor):player} has written on {ToPrettyString(entity):entity} the following text: {text}");
 
             _audio.PlayPvs(entity.Comp.Sound, entity);
         }

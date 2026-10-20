@@ -1,5 +1,6 @@
 using Content.Shared.Ghost.Components;
 using Content.Shared.IdentityManagement.Components;
+using Content.Shared.Medical;
 
 namespace Content.Shared.IdentityManagement;
 
@@ -32,6 +33,12 @@ public static class Identity
 
         if (!ent.TryGetComponent<IdentityComponent>(uid, out var identity))
             return uidName;
+
+        if (viewer is { } observer && observer != uid
+            && ent.HasComponent<Content.Shared.Humanoid.HumanoidProfileComponent>(uid)
+            && ent.TryGetComponent<PhysiologyComponent>(observer, out var physiology)
+            && physiology.CognitiveSymptoms.HasFlag(MedicalCognitiveSymptoms.Prosopagnosia))
+            return Loc.GetString("medical-neurology-stranger");
 
         var ident = identity.IdentityEntitySlot?.ContainedEntity;
         if (ident is null)

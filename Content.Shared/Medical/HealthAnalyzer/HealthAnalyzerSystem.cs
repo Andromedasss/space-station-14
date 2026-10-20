@@ -178,8 +178,9 @@ public abstract partial class HealthAnalyzerSystem : EntitySystem
     /// </summary>
     /// <param name="target">The entity being scanned.</param>
     /// <param name="scanMode">Whether the analyzer is still scanning.</param>
+    /// <param name="detailed">Whether the experimental physiology observations should be detailed.</param>
     /// <returns>Returns a <see cref="HealthAnalyzerUiState"/> without a valid temperature.</returns>
-    public virtual HealthAnalyzerUiState GetHealthAnalyzerUiState(EntityUid? target, bool scanMode)
+    public virtual HealthAnalyzerUiState GetHealthAnalyzerUiState(EntityUid? target, bool scanMode, bool detailed = false)
     {
         if (!target.HasValue || Deleted(target.Value))
             return new HealthAnalyzerUiState();

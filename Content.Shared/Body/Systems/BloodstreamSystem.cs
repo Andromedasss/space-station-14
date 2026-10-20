@@ -15,6 +15,7 @@ using Content.Shared.Forensics.Components;
 using Content.Shared.Gibbing;
 using Content.Shared.HealthExaminable;
 using Content.Shared.Metabolism;
+using Content.Shared.Medical;
 using Content.Shared.Mobs.Systems;
 using Content.Shared.Popups;
 using Content.Shared.Random.Helpers;
@@ -196,6 +197,10 @@ public sealed partial class BloodstreamSystem : EntitySystem
         // But the changes to the bloodstream have also been dirtied,
         // so we prevent applying them twice.
         if (_timing.ApplyingState)
+            return;
+
+        // Experimental patients derive bleeding from localized wounds on the server.
+        if (HasComp<PhysiologyComponent>(ent))
             return;
 
         if (args.DamageDelta is null || !args.DamageIncreased)
@@ -518,6 +523,7 @@ public sealed partial class BloodstreamSystem : EntitySystem
         if (!Resolve(ent, ref ent.Comp, logMissing: false))
             return false;
 
+        var previous = ent.Comp.BleedAmount;
         ent.Comp.BleedAmount += amount;
         ent.Comp.BleedAmount = Math.Clamp(ent.Comp.BleedAmount, 0, ent.Comp.MaxBleedAmount);
 
@@ -529,6 +535,12 @@ public sealed partial class BloodstreamSystem : EntitySystem
         {
             var severity = (short)Math.Clamp(Math.Round(ent.Comp.BleedAmount, MidpointRounding.ToZero), 0, 10);
             _alertsSystem.ShowAlert(ent.Owner, ent.Comp.BleedingAlert, severity);
+        }
+
+        if (previous != ent.Comp.BleedAmount)
+        {
+            var ev = new BleedAmountChangedEvent(previous, ent.Comp.BleedAmount);
+            RaiseLocalEvent(ent, ref ev);
         }
 
         return true;

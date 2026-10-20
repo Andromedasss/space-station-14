@@ -59,25 +59,29 @@ public sealed partial class ThermalRegulatorSystem : EntitySystem
             return;
 
         // TODO: Why do we have two datafields for this if they are only ever used once here?
-        var totalMetabolismTempChange = ent.Comp1.MetabolismHeat - ent.Comp1.RadiatedHeat;
+        var regulation = new ThermalRegulationEvent();
+        RaiseLocalEvent(ent, ref regulation);
+        var capacity = Math.Clamp(regulation.Capacity, 0f, 1f);
+        var normalTemperature = ent.Comp1.NormalBodyTemperature + regulation.TargetOffset;
+        var totalMetabolismTempChange = ent.Comp1.MetabolismHeat * capacity - ent.Comp1.RadiatedHeat;
 
         // implicit heat regulation
-        var tempDiff = Math.Abs(ent.Comp2.Temperature - ent.Comp1.NormalBodyTemperature);
+        var tempDiff = Math.Abs(ent.Comp2.Temperature - normalTemperature);
         var heatCapacity = ent.Comp2.HeatCapacity;
         var targetHeat = tempDiff * heatCapacity;
-        if (ent.Comp2.Temperature > ent.Comp1.NormalBodyTemperature)
+        if (ent.Comp2.Temperature > normalTemperature)
         {
-            totalMetabolismTempChange -= Math.Min(targetHeat, ent.Comp1.ImplicitHeatRegulation);
+            totalMetabolismTempChange -= Math.Min(targetHeat, ent.Comp1.ImplicitHeatRegulation * capacity);
         }
         else
         {
-            totalMetabolismTempChange += Math.Min(targetHeat, ent.Comp1.ImplicitHeatRegulation);
+            totalMetabolismTempChange += Math.Min(targetHeat, ent.Comp1.ImplicitHeatRegulation * capacity);
         }
 
         _tempSys.ChangeHeat((ent, ent.Comp2), totalMetabolismTempChange, ignoreHeatResistance: true);
 
         // recalc difference and target heat
-        tempDiff = Math.Abs(ent.Comp2.Temperature - ent.Comp1.NormalBodyTemperature);
+        tempDiff = Math.Abs(ent.Comp2.Temperature - normalTemperature);
         targetHeat = tempDiff * heatCapacity;
 
         // if body temperature is not within comfortable, thermal regulation
@@ -85,19 +89,19 @@ public sealed partial class ThermalRegulatorSystem : EntitySystem
         if (tempDiff < ent.Comp1.ThermalRegulationTemperatureThreshold)
             return;
 
-        if (ent.Comp2.Temperature > ent.Comp1.NormalBodyTemperature)
+        if (ent.Comp2.Temperature > normalTemperature)
         {
             if (!_actionBlockerSys.CanSweat(ent))
                 return;
 
-            _tempSys.ChangeHeat((ent, ent.Comp2), -Math.Min(targetHeat, ent.Comp1.SweatHeatRegulation), ignoreHeatResistance: true);
+            _tempSys.ChangeHeat((ent, ent.Comp2), -Math.Min(targetHeat, ent.Comp1.SweatHeatRegulation * capacity), ignoreHeatResistance: true);
         }
         else
         {
             if (!_actionBlockerSys.CanShiver(ent))
                 return;
 
-            _tempSys.ChangeHeat((ent, ent.Comp2), Math.Min(targetHeat, ent.Comp1.ShiveringHeatRegulation), ignoreHeatResistance: true);
+            _tempSys.ChangeHeat((ent, ent.Comp2), Math.Min(targetHeat, ent.Comp1.ShiveringHeatRegulation * capacity), ignoreHeatResistance: true);
         }
     }
 }

@@ -27,6 +27,8 @@ namespace Content.Shared.Input
         public static readonly BoundKeyFunction EscapeContext = "EscapeContext";
         public static readonly BoundKeyFunction OpenCharacterMenu = "OpenCharacterMenu";
         public static readonly BoundKeyFunction OpenEmotesMenu = "OpenEmotesMenu";
+        public static readonly BoundKeyFunction OpenMedicalPanel = "OpenMedicalPanel";
+        public static readonly BoundKeyFunction OpenMedicalDebug = "OpenMedicalDebug";
         public static readonly BoundKeyFunction OpenCraftingMenu = "OpenCraftingMenu";
         public static readonly BoundKeyFunction OpenGuidebook = "OpenGuidebook";
         public static readonly BoundKeyFunction OpenInventoryMenu = "OpenInventoryMenu";

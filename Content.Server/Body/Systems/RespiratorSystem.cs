@@ -2,6 +2,7 @@ using Content.Server.Administration.Logs;
 using Content.Server.Atmos.EntitySystems;
 using Content.Server.Body.Components;
 using Content.Server.Chat.Systems;
+using Content.Server.Medical;
 using Content.Shared.Body.Systems;
 using Content.Shared.Alert;
 using Content.Shared.Atmos;
@@ -20,6 +21,7 @@ using Content.Shared.EntityEffects;
 using Content.Shared.EntityEffects.Effects.Body;
 using Content.Shared.EntityEffects.Effects.Damage;
 using Content.Shared.Metabolism;
+using Content.Shared.Medical;
 using Content.Shared.Mobs.Systems;
 using JetBrains.Annotations;
 using Robust.Shared.Prototypes;
@@ -41,6 +43,8 @@ public sealed partial class RespiratorSystem : EntitySystem
     [Dependency] private MobStateSystem _mobState = default!;
     [Dependency] private SharedEntityConditionsSystem _entityConditions = default!;
     [Dependency] private SharedSolutionContainerSystem _solutionContainerSystem = default!;
+    [Dependency] private MedicalSedationSystem _sedation = default!;
+    [Dependency] private MedicalLifeSupportSystem _medicalLifeSupport = default!;
 
     private static readonly ProtoId<MetabolismStagePrototype> RespirationStage = new("Respiration");
 
@@ -89,11 +93,20 @@ public sealed partial class RespiratorSystem : EntitySystem
 
             UpdateSaturation(uid, -(float)respirator.UpdateInterval.TotalSeconds, respirator);
 
-            if (!_mobState.IsIncapacitated(uid)) // cannot breathe in crit.
+            // Experimental unconscious patients can still breathe; organ failure is handled separately.
+            if (!_mobState.IsIncapacitated(uid) || HasComp<PhysiologyComponent>(uid))
             {
                 switch (respirator.Status)
                 {
                     case RespiratorStatus.Inhaling:
+                        if (TryComp<PhysiologyStateComponent>(uid, out var physiology) && HasComp<PhysiologyComponent>(uid))
+                        {
+                            var drive = _medicalLifeSupport.GetSupport(uid) != null ? 1f : _sedation.RespiratoryDrive(uid);
+                            physiology.BreathProgress = Math.Min(1f, physiology.BreathProgress + drive);
+                            if (physiology.BreathProgress < 1f)
+                                break;
+                            physiology.BreathProgress -= 1f;
+                        }
                         Inhale((uid, respirator));
                         respirator.Status = RespiratorStatus.Exhaling;
                         break;
@@ -183,14 +196,19 @@ public sealed partial class RespiratorSystem : EntitySystem
     }
 
     /// <summary>
-    /// Returns true if the entity is above their SuffocationThreshold and alive.
+    /// Returns true if the entity has respiratory reserve and can breathe in its current mob state.
     /// </summary>
     public bool IsBreathing(Entity<RespiratorComponent?> ent)
     {
-        if (_mobState.IsIncapacitated(ent))
+        if (_mobState.IsDead(ent)
+            || (_mobState.IsIncapacitated(ent) && !HasComp<PhysiologyComponent>(ent.Owner)))
             return false;
 
         if (!Resolve(ent, ref ent.Comp))
+            return false;
+
+        if (HasComp<PhysiologyComponent>(ent.Owner) && _sedation.RespiratoryDrive(ent.Owner) <= 0f
+            && _medicalLifeSupport.GetSupport(ent.Owner) == null)
             return false;
 
         return (ent.Comp.Saturation > ent.Comp.SuffocationThreshold);

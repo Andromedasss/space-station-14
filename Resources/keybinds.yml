@@ -86,6 +86,12 @@ binds:
   type: State
   key: NumpadNum5
 # Misc
+- function: OpenMedicalPanel
+  type: State
+  key: M
+- function: OpenMedicalDebug
+  type: State
+  key: O
 - function: ShowEscapeMenu
   type: State
   key: F10

@@ -65,6 +65,16 @@
         - id: Drill
         - id: Saw
         - id: Hemostat
+        - id: SurgicalExtractor
+        - id: BoneSetter
+        - id: VascularRepairTool
+        - id: ProstheticRepairTool
+        - id: NeuralRehabilitationProbe
+        - id: SurgicalAntiseptic
+        - id: MedicalTestOrganRepairKit
+        - id: MedicalTestBloodSample
+          amount: 3
+        - id: MedicalTestLaboratory
         - id: ClothingMaskSterile
 
 - type: entity

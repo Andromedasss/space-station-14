@@ -14,6 +14,10 @@ public sealed class HealthAnalyzerUiState : BoundUserInterfaceState
     public bool ScanMode;
     public bool Bleeding;
     public bool Unrevivable;
+    /// <summary>
+    /// Experimental physiology observations of the scanned entity, if it has them.
+    /// </summary>
+    public PhysiologyScan? Physiology;
 
     public HealthAnalyzerUiState() {}
 
