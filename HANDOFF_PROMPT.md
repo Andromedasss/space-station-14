@@ -33,17 +33,23 @@ dotnet build SS14\Content.Server\Content.Server.csproj
 Корень Kilo-проекта — теперь сама папка `SS14` (VS Code открыт в ней), там же
 `.kilo/agent-manager.json` и `.kilo/setup-script.ps1` + `run-script.ps1`.
 `kilo.json` лежит уровнем выше (`ss14-work\kilo.json`) и наследуется вверх по дереву.
-Git-репозиторий — `SS14`, ветка `feature/medical-physiology`.
+Git-репозиторий — `SS14`, рабочая ветка — **`master`**.
 
-### 2. Состояние ветки
+### 2. Состояние репозитория
 
-- Репозиторий: `SS14`, ветка `feature/medical-physiology`
-- Рабочее дерево чистое, всё закоммичено
-- **Ничего не запушено.** `origin` указывает на апстрим `space-wizards/space-station-14`, писать туда нельзя.
-  Форк пользователя: `https://github.com/Andromedasss/space-station-14.git` (`gh` авторизован как `Andromedasss`, scope `repo`).
-  Если нужно запушить — сначала спроси пользователя.
+- Репозиторий: `SS14`, ветка **`master`** — экспериментальная медицина **уже в мейне**.
+- `origin` → **наш форк** `https://github.com/Andromedasss/space-station-14.git` (писать можно,
+  `gh` авторизован как `Andromedasss`, scope `repo`).
+- `upstream` → `https://github.com/space-wizards/space-station-14.git` — только для спорадических
+  cherry-pick, базой не является. Agent Manager создаёт worktree от `origin/master`
+  (то есть от нашего форка, с медициной).
+- Всё запушено: `master` в форке = `3c7a99de05`.
+- Ветка `feature/medical-physiology` сохранена локально как история (уже влита в `master`).
 - `RobustToolbox` — **git submodule**. В новом worktree обязательно
-  `git submodule update --init --recursive`, иначе сборка не пройдёт.
+  `git submodule update --init --recursive`, иначе сборка не пройдёт (это делает
+  `.kilo/setup-script.ps1`).
+- Перед пушем: спроси пользователя. `git add -A` не использовать, `git stash` — общий для всех
+  worktree и ломает параллельную работу.
 
 ### 3. Что уже сделано
 
@@ -271,14 +277,29 @@ dotnet run --no-build --project Content.Client\Content.Client.csproj -- --connec
 
 ### 8. Текущее состояние
 
-- Всё закоммичено, рабочее дерево чистое, ничего не запушено.
-- Тесты: 789 из 796 проходят, 0 упавших, 7 пропущено (пропуски — каскад от
-  одного падавшего теста; после фикса самоубийства надо перепроверить).
-- Известный нерешённый момент: команда `/suicide` убивала моба «плоским» уроном по
-  порогу `MobThresholds`, а с новой медициной урон уходит в органы и порог не
-  пересекается. Сделано: `SuicideSystem.KillExperimentalPatient()` уничтожает мозг
-  (`brain.Damage = PhysiologyModel.MaximumBrainDamage`) для сущностей с
-  `PhysiologyComponent`. **Проверь, что `SuicideCommandTests` теперь зелёные.**
+- Всё закоммичено и запушено в наш форк (`origin/master` = `3c7a99de05`), рабочее дерево чистое.
+- Медицина **влита в `master`**: merge-коммит `d6b78f5c3e` («Merge the experimental medical system
+  into master»). Апстрим при этом обновился (43 коммита) — конфликты разобраны так:
+  - апстрим переписал health analyzer в `Content.Shared/Medical/HealthAnalyzer/` + `ServerHealthAnalyzerSystem`
+    и перевёл UI на `SetUiState`/`HealthAnalyzerUiState` (класс). Наша физиология перенесена поверх:
+    в `HealthAnalyzerUiState` добавлено поле `PhysiologyScan? Physiology`, в
+    `GetHealthAnalyzerUiState(target, scanMode, detailed)` — параметр `detailed`,
+    `ServerHealthAnalyzerSystem` заполняет `Physiology` через `PhysiologySystem.Scan`.
+  - `Content.Server/Medical/HealthAnalyzerSystem.cs` (старая версия) удалён — используется общая
+    `Content.Shared.Medical.HealthAnalyzer.HealthAnalyzerSystem`.
+  - Стационарный сканер (`MedicalScannerSystem`) переведён на `_ui.SetUiState`, всегда `detailed = true`.
+  - `DefibrillatorTest` переписан под новую медицину (смерть от мозга, дефиб не воскрешает);
+    тесты апстрима про bed-цепь и склей дефибриллятора сохранены.
+  - `ProjectileSystem` — оставлен апстримный лог `shotByString` + наш `targetPart` (попадание
+    в конкретную часть тела).
+- Тесты (после слияния): ~995 прошли, 0 упавших, 10 пропущено (каскадные пропуски).
+  Прогонять **по чанкам** — один огромный фильтр роняет тест-хост по памяти:
+  `Tests.Body` 170/7 skip, `Physiology|BedsideMonitor|HealthAnalyzer` 22/1,
+  `Eye|Damage|Death|Suicide` 634/2, `Organ|Surgery|Wound|Alexia|Blood|Transfusion` 91,
+  `Tests.Medical` 3, юнит-тесты `Content.Tests` 75.
+- `SuicideCommandTests` зелёные (входят в чанк `~Suicide`).
+- Известная нестабильность: один прогон `Eye|Damage|Death|Suicide` дал 1 флакующий фейл
+  (`WelderCausesEyeDamageTest` — тайминг-зависимый), при повторе — 0 фейлов.
 
 ### 9. Что можно делать дальше (идеи, не обязательства)
 

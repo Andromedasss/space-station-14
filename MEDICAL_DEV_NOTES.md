@@ -118,6 +118,10 @@ dotnet run --no-build --project Content.Client\Content.Client.csproj -- --connec
 25. **Git не даёт одну ветку в двух worktree.** `git worktree add <path> feature/medical-physiology` → `fatal: 'feature/medical-physiology' is already used by worktree at ...`. Для параллельной работы нужен **новый** branch от нужной базы: `git worktree add <path> -b <new-branch> feature/medical-physiology`.
 26. **Переименование корня ломает git-worktree.** Корневой checkout git чинит сам, а записи в `.git/worktrees/*` остаются со старым путём — ветка помечается `prunable`, а `git worktree list` показывает несуществующий путь. Лечится из `SS14`: `git worktree repair <новый путь worktree>`. После этого проверь `git worktree list` — все пути должны быть актуальными.
 
+27. **Апстрим переписал health analyzer (PR «Predict Health Analyzers», #42773).** Старый `Content.Server/Medical/HealthAnalyzerSystem.cs` удалён, появились `Content.Shared/Medical/HealthAnalyzer/{HealthAnalyzerComponent,HealthAnalyzerSystem}.cs` + `Content.Server/Medical/HealthAnalyzer/ServerHealthAnalyzerSystem.cs` + `Content.Client/Medical/HealthAnalyzer/ClientHealthAnalyzerSystem.cs`. UI-state теперь **класс** `HealthAnalyzerUiState : BoundUserInterfaceState` в `Content.Shared/MedicalScanner/HealthAnalyzerUIState.cs` (не структура в `HealthAnalyzerScannedUserMessage.cs` — этого файла больше нет), и передаётся через `SetUiState`, а не `ServerSendUiMessage`. Поля `ScanMode/Bleeding/Unrevivable` — **`bool`, не `bool?`**. Наша физиология перенесена поверх: поле `PhysiologyScan? Physiology` в состоянии, параметр `detailed` в `GetHealthAnalyzerUiState(target, scanMode, detailed)`, заполнение — в `ServerHealthAnalyzerSystem`.
+28. **Слияние с апстримом: конфликт решается в пользу новой структуры апстрима, наша логика переносится сверху.** Никогда не брать свою (старую) копию файла целиком — апстрим рефакторит, и старая копия ломает API соседей. После слияния проверяешь: `HealthAnalyzerSystem`, `HealthAnalyzerUiState`, `MedicalScannerSystem`, `MedicalBloodSystem`, `MedicalDebugSystem` — все берут состояние сканера, и смена сигнатуры ломает их молча.
+29. **Тесты надо гонять чанками, а не одним большим фильтром.** Фильтр из 17 namespace'ов (`~Medical|~Physiology|~Body|~Damage|…`) даёт 835 «падений» по 1-2 мс: это не реальные фейлы, а **краш testhost от нехватки памяти** (машина 16 ГБ). Тот же набор, разбитый на 5 чанков, проходит целиком. Признак краша: `Failed: 835, Passed: 2` и мгновенное падение тестов.
+
 ## 6. Что сделано и что нет
 
 Готово:
@@ -128,13 +132,17 @@ dotnet run --no-build --project Content.Client\Content.Client.csproj -- --connec
 - Медицинское дебаг-меню: команда `/meddebug` (или клавиша **O**) — 4 вкладки: обзор (все параметры сканера + метаболизм), органы, раны, неврология.
 
 Не сделано / требует решения:
-- **Пуш в форк** не выполнен (53 коммита локально).
+- **Пуш выполнен**: медицина влита в `master` (merge `d6b78f5c3e`) и запушена в наш форк
+  `Andromedasss/space-station-14` (`origin/master` = `3c7a99de05`). `origin` — наш форк,
+  `upstream` — апстрим (только для cherry-pick, базой не является).
 - `.kilo\setup-script.ps1` и `.kilo\run-script.ps1` перенесены в `SS14\.kilo\` (корень проекта теперь
   `SS14`, туда же переехал Agent Manager). Они **намеренно не в git**: расширение Kilo само
   добавляет `.kilo/setup-script*` в `.git/info/exclude`, а setup/run-скрипты Agent Manager
   читает из `.kilo\` главного репозитория, а не из worktree — коммитить их не нужно.
   `run-script.ps1` добавлен в `.git/info/exclude` вручную для симметрии.
 - `build_err.txt` / `build_log.txt` — мусор от сборки, не коммитить.
+- **Пять старых worktree от Cline** (`~/.cline/worktrees/*`, все на коммите `553481a5a8`) занимают
+  ~35 ГБ и давно неактуальны — стоит удалить: `git worktree remove <path>` + удалить ветки `cline/*`.
 - Папка `нейросlop` (с `o`) — лишняя, удалить.
 
 ## 7. Полезные команды в игре
